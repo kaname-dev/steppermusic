@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stepper Music - MIDI Controller</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 700px;
+            width: 100%;
+            padding: 30px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+            text-align: center;
+            font-size: 28px;
+        }
+
+        .section {
+            margin-bottom: 25px;
+        }
+
+        .section-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translate(0, -2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-primary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-danger {
+            background: #f56565;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #e53e3e;
+            transform: translate(0, -2px);
+            box-shadow: 0 10px 20px rgba(245, 101, 101, 0.3);
+        }
+
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status.success {
+            background: #c6f6d5;
+            color: #22543d;
+            border: 1px solid #9ae6b4;
+        }
+
+        .status.error {
+            background: #fed7d7;
+            color: #742a2a;
+            border: 1px solid #fc8181;
+        }
+
+        .status.info {
+            background: #bee3f8;
+            color: #2c5282;
+            border: 1px solid #90cdf4;
+        }
+
+        .status::before {
+            content: '';
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: currentColor;
+            display: inline-block;
+        }
+
+        select, input {
+            padding: 10px 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border 0.3s;
+        }
+
+        select:focus, input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .info-box {
+            background: #f7fafc;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+            margin-top: 15px;
+            font-size: 13px;
+            color: #555;
+            line-height: 1.6;
+        }
+
+        .note-display {
+            background: #f0f4ff;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+            border: 2px solid #ddd;
+        }
+
+        .note-item {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin: 5px 5px 5px 0;
+            font-weight: 600;
+            font-size: 12px;
+        }
+
+        .note-item.off {
+            background: #cbd5e0;
+            color: #555;
+        }
+
+        #activeNotes {
+            min-height: 40px;
+            display: flex;
+            flex-wrap: wrap;
+            align-content: flex-start;
+        }
+
+        #activeNotes.empty::after {
+            content: 'ノート演奏待機中...';
+            color: #999;
+            font-size: 13px;
+            align-self: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎹 Stepper Music Controller</h1>
+
+        <!-- Serial Connection Section -->
+        <div class="section">
+            <div class="section-title">Arduino接続</div>
+
+        <!-- Serial Connection Section -->
+        <div class="section">
+            <div class="section-title">Arduino接続</div>
+            <div class="button-group">
+                <button class="btn-primary" id="connectBtn">Arduino接続</button>
+                <button class="btn-danger" id="disconnectBtn" disabled>切断</button>
+                <button class="btn-primary" id="resetBtn" disabled>リセット</button>
+            </div>
+            <div id="serialStatus" class="status info" style="display: none; margin-top: 10px;">
+                接続待機中...
+            </div>
+        </div>
+
+        <!-- MIDI Device Section -->
+        <div class="section">
+            <div class="section-title">MIDIデバイス選択</div>
+            <select id="midiSelect" disabled>
+                <option value="">MIDIデバイスを選択してください</option>
+            </select>
+            <div id="midiStatus" class="status info" style="display: none; margin-top: 10px;">
+                MIDI待機中...
+            </div>
+        </div>
+
+        <!-- Active Notes Display -->
+        <div class="section">
+            <div class="section-title">アクティブノート</div>
+            <div class="note-display">
+                <div id="activeNotes" class="empty"></div>
+            </div>
+        </div>
+
+        <!-- Settings Section -->
+        <div class="section">
+            <div class="section-title">設定</div>
+            <label>
+                <input type="checkbox" id="polyPhony" checked>
+                ポリフォニー有効 (複数音源同時駆動)
+            </label>
+        </div>
+
+        <!-- Info Box -->
+        <div class="info-box">
+            <strong>使用方法:</strong><br>
+            1. 「Arduino接続」をクリック<br>
+            2. COM ポートを選択 (通常 COM3-COM6)<br>
+            3. MIDIデバイスを接続してドロップダウンから選択<br>
+            4. MIDIキーボードで演奏開始<br>
+            <br>
+            <strong>注意:</strong> Chrome/Edge 推奨、SSL/localhost での使用が必要な場合あり
+        </div>
+    </div>
+
+    <script>
+        let serialPort = null;
+        let reader = null;
+        let writer = null;
+        let midiAccess = null;
+        let midiDevice = null;
+        const activeMotors = new Map(); // motorNum -> midiNote
+        const notesOnMotors = new Map(); // midiNote -> motorNum
+
+        // ===== Serial Communication =====
+        async function connectSerial() {
+            try {
+                serialPort = await navigator.serial.requestPort();
+                await serialPort.open({ baudRate: 115200 });
+                
+                reader = serialPort.readable.getReader();
+                writer = serialPort.writable.getWriter();
+
+                updateStatusSerial('success', 'Arduino接続成功');
+                document.getElementById('connectBtn').disabled = true;
+                document.getElementById('disconnectBtn').disabled = false;
+                document.getElementById('resetBtn').disabled = false;
+                document.getElementById('midiSelect').disabled = false;
+
+                // Start reading (optional)
+                readSerial();
+            } catch (error) {
+                console.error('Serial connection error:', error);
+                updateStatusSerial('error', 'Arduino接続失敗: ' + error.message);
+            }
+        }
+
+        async function disconnectSerial() {
+            try {
+                if (reader) {
+                    await reader.cancel();
+                }
+                if (writer) {
+                    await writer.releaseLock();
+                }
+                if (serialPort) {
+                    await serialPort.close();
+                    serialPort = null;
+                }
+
+                updateStatusSerial('info', 'Arduino切断');
+                document.getElementById('connectBtn').disabled = false;
+                document.getElementById('disconnectBtn').disabled = true;
+                document.getElementById('resetBtn').disabled = true;
+                document.getElementById('midiSelect').disabled = true;
+                activeMotors.clear();
+                notesOnMotors.clear();
+                updateActiveNotesDisplay();
+            } catch (error) {
+                console.error('Serial disconnect error:', error);
+            }
+        }
+
+        async function readSerial() {
+            if (!reader) return;
+            try {
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    // Echo received data (optional)
+                    console.log('Received from Arduino:', value);
+                }
+            } catch (error) {
+                console.error('Serial read error:', error);
+            }
+        }
+
+        async function sendNoteOn(midiNote) {
+            if (!writer || !serialPort) return;
+
+            // Allocate next available motor
+            let motorNum = -1;
+            for (let m = 0; m < 4; m++) {
+                if (!activeMotors.has(m)) {
+                    motorNum = m;
+                    break;
+                }
+            }
+
+            if (motorNum === -1) {
+                if (!document.getElementById('polyPhony').checked) {
+                    // Stop lowest note to make room
+                    let lowestNote = 127;
+                    let lowestMotor = -1;
+                    for (let [note, motor] of notesOnMotors) {
+                        if (note < lowestNote) {
+                            lowestNote = note;
+                            lowestMotor = motor;
+                        }
+                    }
+                    if (lowestMotor !== -1) {
+                        await sendStopNote(lowestMotor);
+                        motorNum = lowestMotor;
+                    }
+                } else {
+                    return; // All motors busy
+                }
+            }
+
+            try {
+                const msg = new Uint8Array([0x90, midiNote]);
+                await writer.write(msg);
+                activeMotors.set(motorNum, midiNote);
+                notesOnMotors.set(midiNote, motorNum);
+                updateActiveNotesDisplay();
+            } catch (error) {
+                console.error('Send noteOn error:', error);
+            }
+        }
+
+        async function sendStopNote(motorNum) {
+            if (!writer || !serialPort) return;
+
+            try {
+                const msg = new Uint8Array([0x80, motorNum]);
+                await writer.write(msg);
+                const note = activeMotors.get(motorNum);
+                activeMotors.delete(motorNum);
+                if (note !== undefined) notesOnMotors.delete(note);
+                updateActiveNotesDisplay();
+            } catch (error) {
+                console.error('Send stop note error:', error);
+            }
+        }
+
+        async function resetArduino() {
+            try {
+                const msg = new Uint8Array([0xFF]);
+                await writer.write(msg);
+                activeMotors.clear();
+                notesOnMotors.clear();
+                updateActiveNotesDisplay();
+                updateStatusSerial('success', 'リセット完了');
+            } catch (error) {
+                console.error('Reset error:', error);
+            }
+        }
+
+        function updateStatusSerial(type, message) {
+            const el = document.getElementById('serialStatus');
+            el.className = 'status ' + type;
+            el.textContent = message;
+            el.style.display = 'flex';
+        }
+
+        // ===== MIDI Input =====
+        async function initMIDI() {
+            try {
+                midiAccess = await navigator.requestMIDIAccess();
+                populateMIDIDevices();
+                midiAccess.onstatechange = (e) => {
+                    console.log('MIDI state changed:', e);
+                    populateMIDIDevices();
+                };
+                updateStatusMIDI('success', 'MIDI初期化成功');
+            } catch (error) {
+                console.error('MIDI init error:', error);
+                updateStatusMIDI('error', 'MIDIサポートなし: ' + error.message);
+            }
+        }
+
+        function populateMIDIDevices() {
+            if (!midiAccess) return;
+
+            const select = document.getElementById('midiSelect');
+            const inputs = Array.from(midiAccess.inputs.values());
+
+            select.innerHTML = '<option value="">MIDIデバイスを選択してください</option>';
+            inputs.forEach((input, index) => {
+                const option = document.createElement('option');
+                option.value = input.id;
+                option.textContent = input.name || 'MIDI Device ' + index;
+                select.appendChild(option);
+            });
+
+            if (inputs.length > 0) {
+                updateStatusMIDI('info', inputs.length + '個のMIDIデバイスが利用可能');
+            }
+        }
+
+        function attachMIDIInput(id) {
+            if (!midiAccess) return;
+
+            // Detach previous
+            if (midiDevice) {
+                midiDevice.onmidimessage = null;
+            }
+
+            midiDevice = midiAccess.inputs.get(id);
+            if (!midiDevice) return;
+
+            midiDevice.onmidimessage = (message) => {
+                const cmd = message.data[0] >> 4;
+                const channel = message.data[0] & 0xf;
+                const note = message.data[1];
+                const velocity = message.data[2];
+
+                if (cmd === 9 && velocity > 0) { // Note On
+                    sendNoteOn(note);
+                } else if ((cmd === 8) || (cmd === 9 && velocity === 0)) { // Note Off
+                    if (notesOnMotors.has(note)) {
+                        const motorNum = notesOnMotors.get(note);
+                        sendStopNote(motorNum);
+                    }
+                }
+            };
+
+            updateStatusMIDI('success', 'MIDI接続: ' + midiDevice.name);
+        }
+
+        function updateStatusMIDI(type, message) {
+            const el = document.getElementById('midiStatus');
+            el.className = 'status ' + type;
+            el.textContent = message;
+            el.style.display = 'flex';
+        }
+
+        function midiNoteToName(midiNote) {
+            const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+            const octave = Math.floor(midiNote / 12) - 1;
+            const note = noteNames[midiNote % 12];
+            return note + octave;
+        }
+
+        function updateActiveNotesDisplay() {
+            const container = document.getElementById('activeNotes');
+            container.innerHTML = '';
+            container.classList.remove('empty');
+
+            if (activeMotors.size === 0) {
+                container.classList.add('empty');
+                return;
+            }
+
+            for (let [motorNum, midiNote] of activeMotors) {
+                const div = document.createElement('div');
+                div.className = 'note-item';
+                div.textContent = midiNoteToName(midiNote) + ' (M' + motorNum + ')';
+                container.appendChild(div);
+            }
+        }
+
+        // ===== Event Listeners =====
+        document.getElementById('connectBtn').addEventListener('click', connectSerial);
+        document.getElementById('disconnectBtn').addEventListener('click', disconnectSerial);
+        document.getElementById('resetBtn').addEventListener('click', resetArduino);
+
+        document.getElementById('midiSelect').addEventListener('change', (e) => {
+            if (e.target.value) {
+                attachMIDIInput(e.target.value);
+            }
+        });
+
+        // ===== Initialize =====
+        window.addEventListener('load', () => {
+            // Check for Web Serial API
+            if (!navigator.serial) {
+                updateStatusSerial('error', 'Web Serial API未サポート (Chrome/Edge 推奨)');
+                document.getElementById('connectBtn').disabled = true;
+            }
+
+            // Initialize MIDI
+            initMIDI();
+        });
+    </script>
+</body>
+</html>
