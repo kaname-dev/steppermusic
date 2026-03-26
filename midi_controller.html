@@ -18,49 +18,57 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            padding: 20px;
+            padding: 10px;
+            margin: 0;
         }
 
         .container {
             background: white;
             border-radius: 15px;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            max-width: 700px;
             width: 100%;
-            padding: 30px;
+            max-width: 100vw;
+            height: auto;
+            max-height: 100vh;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
         }
 
         h1 {
             color: #333;
-            margin-bottom: 30px;
+            margin: 0 0 12px 0;
             text-align: center;
-            font-size: 28px;
+            font-size: 24px;
+            flex-shrink: 0;
         }
 
         .section {
-            margin-bottom: 25px;
+            margin-bottom: 10px;
+            flex-shrink: 0;
         }
 
         .section-title {
-            font-size: 16px;
+            font-size: 13px;
             font-weight: 600;
             color: #555;
-            margin-bottom: 12px;
+            margin-bottom: 8px;
             text-transform: uppercase;
             letter-spacing: 1px;
         }
 
         .button-group {
             display: flex;
-            gap: 10px;
+            gap: 8px;
             flex-wrap: wrap;
         }
 
         button {
-            padding: 12px 20px;
+            padding: 10px 15px;
             border: none;
             border-radius: 8px;
-            font-size: 14px;
+            font-size: 12px;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s ease;
@@ -97,13 +105,14 @@
         }
 
         .status {
-            padding: 15px;
+            padding: 10px;
             border-radius: 8px;
-            margin-top: 10px;
+            margin-top: 8px;
             font-weight: 500;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
+            font-size: 12px;
         }
 
         .status.success {
@@ -134,10 +143,10 @@
         }
 
         select, input {
-            padding: 10px 12px;
+            padding: 8px 10px;
             border: 2px solid #e0e0e0;
             border-radius: 8px;
-            font-size: 14px;
+            font-size: 13px;
             transition: border 0.3s;
         }
 
@@ -148,32 +157,35 @@
 
         .info-box {
             background: #f7fafc;
-            padding: 15px;
+            padding: 12px;
             border-radius: 8px;
             border-left: 4px solid #667eea;
-            margin-top: 15px;
-            font-size: 13px;
+            margin-top: 10px;
+            font-size: 12px;
             color: #555;
-            line-height: 1.6;
+            line-height: 1.5;
+            flex-shrink: 0;
         }
 
         .note-display {
             background: #f0f4ff;
-            padding: 15px;
+            padding: 10px;
             border-radius: 8px;
-            margin-top: 10px;
+            margin-top: 8px;
             border: 2px solid #ddd;
+            height: 60px;
+            overflow-y: auto;
         }
 
         .note-item {
             display: inline-block;
             background: #667eea;
             color: white;
-            padding: 8px 12px;
+            padding: 6px 10px;
             border-radius: 6px;
-            margin: 5px 5px 5px 0;
+            margin: 4px 4px 4px 0;
             font-weight: 600;
-            font-size: 12px;
+            font-size: 11px;
         }
 
         .note-item.off {
@@ -182,7 +194,7 @@
         }
 
         #activeNotes {
-            min-height: 40px;
+            height: 100%;
             display: flex;
             flex-wrap: wrap;
             align-content: flex-start;
@@ -191,8 +203,86 @@
         #activeNotes.empty::after {
             content: 'ノート演奏待機中...';
             color: #999;
-            font-size: 13px;
+            font-size: 12px;
             align-self: center;
+            width: 100%;
+        }
+
+        .piano-keyboard {
+            display: flex;
+            gap: 2px;
+            padding: 12px;
+            background: #f5f5f5;
+            border-radius: 8px;
+            margin-top: 10px;
+            overflow-x: auto;
+            user-select: none;
+            flex-shrink: 1;
+            min-height: 200px;
+            flex-grow: 1;
+        }
+
+        .piano-key {
+            min-width: 48px;
+            height: 160px;
+            border-radius: 0 0 8px 8px;
+            border: 1px solid #999;
+            background: white;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            align-items: center;
+            padding-bottom: 8px;
+            font-size: 10px;
+            font-weight: 500;
+            color: #333;
+            transition: all 0.05s;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .piano-key.white {
+            background: white;
+            flex: 0 0 48px;
+        }
+
+        .piano-key.black {
+            background: #1a1a1a;
+            color: white;
+            min-width: 32px;
+            flex: 0 0 32px;
+            height: 110px;
+            border-radius: 0 0 6px 6px;
+            margin-left: -18px;
+            margin-right: -18px;
+            z-index: 10;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .piano-key:active {
+            transform: translate(0, 2px);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .piano-key.white:active {
+            background: #e0e0e0;
+        }
+
+        .piano-key.black:active {
+            background: #0a0a0a;
+        }
+
+        .piano-key.playing {
+            background: #667eea;
+        }
+
+        .piano-key.white.playing {
+            background: #667eea;
+            color: white;
+        }
+
+        .piano-key.black.playing {
+            background: #764ba2;
         }
     </style>
 </head>
@@ -236,6 +326,14 @@
             </div>
         </div>
 
+        <!-- Virtual Piano Keyboard -->
+        <div class="section">
+            <div class="section-title">仮想ピアノ鍵盤</div>
+            <div id="pianoKeyboard" class="piano-keyboard">
+                <!-- Generated by JavaScript -->
+            </div>
+        </div>
+
         <!-- Settings Section -->
         <div class="section">
             <div class="section-title">設定</div>
@@ -250,10 +348,18 @@
             <strong>使用方法:</strong><br>
             1. 「Arduino接続」をクリック<br>
             2. COM ポートを選択 (通常 COM3-COM6)<br>
-            3. MIDIデバイスを接続してドロップダウンから選択<br>
-            4. MIDIキーボードで演奏開始<br>
+            3. 仮想鍵盤か外部MIDIデバイスから演奏<br>
             <br>
-            <strong>注意:</strong> Chrome/Edge 推奨、SSL/localhost での使用が必要な場合あり
+            <strong>ダイアログが出ない場合:</strong><br>
+            - ブラウザをリロード (F5) してから再試行<br>
+            - シークレット/プライベートモードで開く<br>
+            - 別のブラウザを試す（Chrome/Edge推奨）<br>
+            <br>
+            <strong>仮想鍵盤:</strong><br>
+            - マウスやタッチで鍵盤をクリック<br>
+            - キーボード対応 (W/E/T/Y/U/O/P = C/D/E/F/G/A/B)<br>
+            <br>
+            <strong>注意:</strong> Chrome/Edge 推奨
         </div>
     </div>
 
@@ -265,6 +371,64 @@
         let midiDevice = null;
         const activeMotors = new Map(); // motorNum -> midiNote
         const notesOnMotors = new Map(); // midiNote -> motorNum
+        const pressedKeys = new Set(); // for virtual keyboard tracking
+
+        // Piano key definitions: startNote, octaveRange
+        const PIANO_START_NOTE = 21;  // A0 (ピアノ最低音)
+        const PIANO_END_NOTE = 108;   // C8 (ピアノ最高音)
+
+        // ===== Virtual Piano Keyboard Generation =====
+        function generatePianoKeyboard() {
+            const container = document.getElementById('pianoKeyboard');
+            container.innerHTML = '';
+
+            const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+            const isBlack = [false, true, false, true, false, false, true, false, true, false, true, false];
+
+            for (let note = PIANO_START_NOTE; note <= PIANO_END_NOTE; note++) {
+                const noteName = noteNames[note % 12];
+                const octave = Math.floor(note / 12) - 1;
+                const isBlackKey = isBlack[note % 12];
+                const keyClass = isBlackKey ? 'black' : 'white';
+
+                const keyDiv = document.createElement('div');
+                keyDiv.className = `piano-key ${keyClass}`;
+                keyDiv.dataset.midiNote = note;
+                keyDiv.textContent = `${noteName}${octave}`;
+
+                keyDiv.addEventListener('mousedown', handleKeyDown);
+                keyDiv.addEventListener('mouseup', handleKeyUp);
+                keyDiv.addEventListener('touchstart', handleKeyDown);
+                keyDiv.addEventListener('touchend', handleKeyUp);
+                keyDiv.addEventListener('mouseleave', handleKeyUp);
+
+                container.appendChild(keyDiv);
+            }
+        }
+
+        function handleKeyDown(e) {
+            e.preventDefault();
+            const midiNote = parseInt(e.currentTarget.dataset.midiNote);
+
+            if (!pressedKeys.has(midiNote)) {
+                pressedKeys.add(midiNote);
+                e.currentTarget.classList.add('playing');
+                sendNoteOn(midiNote);
+            }
+        }
+
+        function handleKeyUp(e) {
+            const midiNote = parseInt(e.currentTarget.dataset.midiNote);
+
+            if (pressedKeys.has(midiNote)) {
+                pressedKeys.delete(midiNote);
+                e.currentTarget.classList.remove('playing');
+                if (notesOnMotors.has(midiNote)) {
+                    const motorNum = notesOnMotors.get(midiNote);
+                    sendStopNote(motorNum);
+                }
+            }
+        }
 
         // ===== Serial Communication =====
         async function connectSerial() {
@@ -285,7 +449,13 @@
                 readSerial();
             } catch (error) {
                 console.error('Serial connection error:', error);
-                updateStatusSerial('error', 'Arduino接続失敗: ' + error.message);
+                
+                // ポート選択ダイアログ関連のエラーの場合
+                if (error.message.includes('No port selected') || error.name === 'NotFoundError') {
+                    updateStatusSerial('error', 'ポート選択がキャンセルされました。ダイアログが出ない場合はブラウザをリロード後、もう一度試してください。');
+                } else {
+                    updateStatusSerial('error', 'Arduino接続失敗: ' + error.message);
+                }
             }
         }
 
@@ -309,7 +479,9 @@
                 document.getElementById('midiSelect').disabled = true;
                 activeMotors.clear();
                 notesOnMotors.clear();
+                pressedKeys.clear();
                 updateActiveNotesDisplay();
+                clearAllKeyboardVisuals();
             } catch (error) {
                 console.error('Serial disconnect error:', error);
             }
@@ -321,7 +493,6 @@
                 while (true) {
                     const { value, done } = await reader.read();
                     if (done) break;
-                    // Echo received data (optional)
                     console.log('Received from Arduino:', value);
                 }
             } catch (error) {
@@ -334,7 +505,7 @@
 
             // Allocate next available motor
             let motorNum = -1;
-            for (let m = 0; m < 4; m++) {
+            for (let m = 0; m < 2; m++) {
                 if (!activeMotors.has(m)) {
                     motorNum = m;
                     break;
@@ -393,7 +564,9 @@
                 await writer.write(msg);
                 activeMotors.clear();
                 notesOnMotors.clear();
+                pressedKeys.clear();
                 updateActiveNotesDisplay();
+                clearAllKeyboardVisuals();
                 updateStatusSerial('success', 'リセット完了');
             } catch (error) {
                 console.error('Reset error:', error);
@@ -504,6 +677,11 @@
             }
         }
 
+        function clearAllKeyboardVisuals() {
+            const keys = document.querySelectorAll('.piano-key');
+            keys.forEach(key => key.classList.remove('playing'));
+        }
+
         // ===== Event Listeners =====
         document.getElementById('connectBtn').addEventListener('click', connectSerial);
         document.getElementById('disconnectBtn').addEventListener('click', disconnectSerial);
@@ -517,6 +695,9 @@
 
         // ===== Initialize =====
         window.addEventListener('load', () => {
+            // Generate virtual piano keyboard
+            generatePianoKeyboard();
+
             // Check for Web Serial API
             if (!navigator.serial) {
                 updateStatusSerial('error', 'Web Serial API未サポート (Chrome/Edge 推奨)');
