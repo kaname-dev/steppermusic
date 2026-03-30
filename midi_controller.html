@@ -326,6 +326,11 @@
                     <input type="number" id="midiPlaySpeed" min="0.25" max="3" step="0.05" value="1" style="width: 70px;">
                     x
                 </label>
+                <label style="font-size: 12px; color: #555; display: flex; align-items: center; gap: 6px;">
+                    キーシフト
+                    <input type="number" id="midiTranspose" min="-24" max="24" step="1" value="0" style="width: 70px;">
+                    st
+                </label>
             </div>
             <div id="midiFileStatus" class="status info" style="display: none; margin-top: 10px;">
                 MIDIファイル未選択
@@ -389,7 +394,12 @@
         let midiFileEvents = []; // { timeMs, type, note }
         let midiFileName = '';
         let midiFilePlaying = false;
-        let midiPlaybackTimers = [];
+        let midiPlaybackLoopId = null;
+        let midiPlaybackLastTickMs = 0;
+        let midiPlaybackPositionMs = 0;
+        let midiPlaybackEventIndex = 0;
+        let midiPlaybackProcessing = false;
+        const midiFileActiveShiftedNotes = new Map(); // originalNote -> shiftedNote queue for stable noteOff
 
         // Piano key definitions: startNote, octaveRange
         const PIANO_START_NOTE = 21;  // A0 (ピアノ最低音)
@@ -563,6 +573,7 @@
                 await writer.write(msg);
                 activeMotors.set(motorNum, midiNote);
                 notesOnMotors.set(midiNote, motorNum);
+                setKeyboardVisualForNote(midiNote, true);
                 updateActiveNotesDisplay();
             } catch (error) {
                 console.error('Send noteOn error:', error);
@@ -577,7 +588,10 @@
                 await writer.write(msg);
                 const note = activeMotors.get(motorNum);
                 activeMotors.delete(motorNum);
-                if (note !== undefined) notesOnMotors.delete(note);
+                if (note !== undefined) {
+                    notesOnMotors.delete(note);
+                    setKeyboardVisualForNote(note, false);
+                }
                 updateActiveNotesDisplay();
             } catch (error) {
                 console.error('Send stop note error:', error);
@@ -687,8 +701,28 @@
         }
 
         function clearMidiPlaybackTimers() {
-            midiPlaybackTimers.forEach((timerId) => clearTimeout(timerId));
-            midiPlaybackTimers = [];
+            if (midiPlaybackLoopId !== null) {
+                clearInterval(midiPlaybackLoopId);
+                midiPlaybackLoopId = null;
+            }
+            midiPlaybackProcessing = false;
+        }
+
+        function getCurrentMidiSpeed() {
+            const speedInput = parseFloat(document.getElementById('midiPlaySpeed').value);
+            return Number.isFinite(speedInput) ? Math.min(3, Math.max(0.25, speedInput)) : 1;
+        }
+
+        function updateMidiPlaybackStatusIfPlaying() {
+            if (!midiFilePlaying) return;
+            const speed = getCurrentMidiSpeed();
+            const transpose = getCurrentMidiTranspose();
+            updateStatusMIDIFile('info', `再生中: ${midiFileName} (${speed.toFixed(2)}x / シフト ${transpose >= 0 ? '+' : ''}${transpose}st)`);
+        }
+
+        function getCurrentMidiTranspose() {
+            const transposeInput = parseInt(document.getElementById('midiTranspose').value, 10);
+            return Number.isFinite(transposeInput) ? Math.min(24, Math.max(-24, transposeInput)) : 0;
         }
 
         async function stopAllActiveNotes() {
@@ -700,6 +734,7 @@
 
         async function stopMidiFilePlayback(showStatus = true) {
             clearMidiPlaybackTimers();
+            midiFileActiveShiftedNotes.clear();
 
             if (!midiFilePlaying) {
                 if (showStatus && midiFileName) {
@@ -952,35 +987,80 @@
 
             await stopMidiFilePlayback(false);
 
-            const speedInput = parseFloat(document.getElementById('midiPlaySpeed').value);
-            const speed = Number.isFinite(speedInput) ? Math.min(3, Math.max(0.25, speedInput)) : 1;
+            const speed = getCurrentMidiSpeed();
+            midiFileActiveShiftedNotes.clear();
+            midiPlaybackPositionMs = 0;
+            midiPlaybackEventIndex = 0;
+            midiPlaybackProcessing = false;
+            midiPlaybackLastTickMs = performance.now();
 
             midiFilePlaying = true;
             document.getElementById('playMidiFileBtn').disabled = true;
             document.getElementById('stopMidiFileBtn').disabled = false;
             document.getElementById('midiFileInput').disabled = true;
 
-            updateStatusMIDIFile('info', `再生中: ${midiFileName} (${speed.toFixed(2)}x)`);
+            updateStatusMIDIFile('info', `再生中: ${midiFileName} (${speed.toFixed(2)}x / シフト可変)`);
 
-            for (const event of midiFileEvents) {
-                const timerId = setTimeout(() => {
-                    if (!midiFilePlaying) return;
+            midiPlaybackLoopId = setInterval(async () => {
+                if (!midiFilePlaying || midiPlaybackProcessing) return;
+                midiPlaybackProcessing = true;
 
-                    if (event.type === 'noteOn') {
-                        sendNoteOn(event.note);
-                    } else if (notesOnMotors.has(event.note)) {
-                        const motorNum = notesOnMotors.get(event.note);
-                        sendStopNote(motorNum);
+                try {
+                    const now = performance.now();
+                    const deltaMs = now - midiPlaybackLastTickMs;
+                    midiPlaybackLastTickMs = now;
+                    midiPlaybackPositionMs += deltaMs * getCurrentMidiSpeed();
+
+                    while (
+                        midiPlaybackEventIndex < midiFileEvents.length &&
+                        midiFileEvents[midiPlaybackEventIndex].timeMs <= midiPlaybackPositionMs
+                    ) {
+                        const event = midiFileEvents[midiPlaybackEventIndex++];
+
+                        if (event.type === 'noteOn') {
+                            const transpose = getCurrentMidiTranspose();
+                            const shiftedNote = event.note + transpose;
+                            const queue = midiFileActiveShiftedNotes.get(event.note) || [];
+
+                            if (shiftedNote >= 0 && shiftedNote <= 127) {
+                                queue.push(shiftedNote);
+                                await sendNoteOn(shiftedNote);
+                            } else {
+                                // Keep noteOn/noteOff pairing even when shifted note is out of range.
+                                queue.push(-1);
+                            }
+
+                            midiFileActiveShiftedNotes.set(event.note, queue);
+                        } else {
+                            const queue = midiFileActiveShiftedNotes.get(event.note);
+                            if (!queue || queue.length === 0) {
+                                continue;
+                            }
+
+                            const shiftedNote = queue.shift();
+                            if (queue.length === 0) {
+                                midiFileActiveShiftedNotes.delete(event.note);
+                            } else {
+                                midiFileActiveShiftedNotes.set(event.note, queue);
+                            }
+
+                            if (shiftedNote === -1) {
+                                continue;
+                            }
+                            if (notesOnMotors.has(shiftedNote)) {
+                                const motorNum = notesOnMotors.get(shiftedNote);
+                                await sendStopNote(motorNum);
+                            }
+                        }
                     }
-                }, event.timeMs / speed);
-                midiPlaybackTimers.push(timerId);
-            }
 
-            const endTimeMs = midiFileEvents[midiFileEvents.length - 1].timeMs / speed + 80;
-            const endTimerId = setTimeout(() => {
-                stopMidiFilePlayback(true);
-            }, endTimeMs);
-            midiPlaybackTimers.push(endTimerId);
+                    if (midiPlaybackEventIndex >= midiFileEvents.length) {
+                        await stopMidiFilePlayback(true);
+                    }
+                } finally {
+                    midiPlaybackProcessing = false;
+                }
+            }, 10);
         }
 
         function midiNoteToName(midiNote) {
@@ -1013,6 +1093,13 @@
             keys.forEach(key => key.classList.remove('playing'));
         }
 
+        function setKeyboardVisualForNote(midiNote, isPlaying) {
+            const key = document.querySelector(`.piano-key[data-midi-note="${midiNote}"]`);
+            if (!key) return;
+
+            key.classList.toggle('playing', isPlaying);
+        }
+
         // ===== Event Listeners =====
         document.getElementById('connectBtn').addEventListener('click', connectSerial);
         document.getElementById('disconnectBtn').addEventListener('click', disconnectSerial);
@@ -1026,6 +1113,8 @@
         document.getElementById('midiFileInput').addEventListener('change', handleMidiFileSelected);
         document.getElementById('playMidiFileBtn').addEventListener('click', playMidiFile);
         document.getElementById('stopMidiFileBtn').addEventListener('click', () => stopMidiFilePlayback(true));
+        document.getElementById('midiPlaySpeed').addEventListener('input', updateMidiPlaybackStatusIfPlaying);
+        document.getElementById('midiTranspose').addEventListener('input', updateMidiPlaybackStatusIfPlaying);
 
         // ===== Initialize =====
         window.addEventListener('load', () => {
