@@ -1,0 +1,1968 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>鍵盤キャプチャ・モーター演奏</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2230;
+      --text: #e8eef7;
+      --muted: #8b97ab;
+      --accent: #5cc8ff;
+      --danger: #ff6b7a;
+      --ok: #7af5c8;
+      --warn: #ffd56a;
+    }
+    html {
+      height: 100%;
+      scrollbar-gutter: stable;
+    }
+    body {
+      margin: 0;
+      height: 100%;
+      max-height: 100vh;
+      max-height: 100dvh;
+      font-family: "Segoe UI", "Hiragino Sans", "Meiryo", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    header {
+      padding: 12px 16px;
+      border-bottom: 1px solid #2a3548;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    h1 {
+      margin: 0;
+      font-size: 1.05rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    button, label.filebtn {
+      background: linear-gradient(180deg, #2c3b55 0%, #243147 100%);
+      border: 1px solid #3d4f6d;
+      color: var(--text);
+      padding: 7px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    button:hover, label.filebtn:hover { border-color: var(--accent); }
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    button.primary {
+      background: linear-gradient(180deg, #1e6eab 0%, #165980 100%);
+      border-color: #3a9fd4;
+    }
+    button.danger { border-color: #c94857; color: #ffd0d5; }
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr min(360px, 34vw);
+      grid-template-rows: minmax(0, 1fr);
+      gap: 0;
+      min-height: 0;
+      overflow: hidden;
+    }
+    @media (max-width: 900px) {
+      main {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(200px, 1fr) minmax(0, 1fr);
+      }
+    }
+    .stage-wrap {
+      position: relative;
+      background: #000;
+      overflow: hidden;
+      min-height: 0;
+    }
+    .stage {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      min-height: 360px;
+    }
+    video#cap {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      vertical-align: top;
+      background: #111;
+    }
+    canvas#overlay {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: auto;
+      cursor: default;
+    }
+    aside {
+      background: var(--panel);
+      border-left: 1px solid #2a3548;
+      padding: 12px;
+      min-height: 0;
+      align-self: stretch;
+      overflow-x: hidden;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+    }
+    @media (max-width: 900px) {
+      aside { border-left: none; border-top: 1px solid #2a3548; }
+    }
+    aside h2 {
+      margin: 0 0 10px;
+      font-size: 0.92rem;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    fieldset {
+      margin: 0 0 12px;
+      padding: 10px;
+      border: 1px solid #2f3d54;
+      border-radius: 10px;
+    }
+    legend { padding: 0 6px; font-size: 12px; color: var(--muted); }
+    .row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+    label.small { font-size: 12px; color: var(--muted); }
+    input[type="color"] {
+      width: 36px;
+      height: 28px;
+      padding: 0;
+      border: none;
+      background: none;
+      cursor: pointer;
+    }
+    input[type="range"] { flex: 1; min-width: 120px; }
+    select, input[type="number"] {
+      background: #0f141c;
+      color: var(--text);
+      border: 1px solid #39475f;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 13px;
+    }
+    .keys-list {
+      max-height: 220px;
+      overflow: auto;
+      border: 1px solid #2f3d54;
+      border-radius: 8px;
+    }
+    .keys-list table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .keys-list th, .keys-list td {
+      padding: 6px 8px;
+      border-bottom: 1px solid #2a3548;
+      text-align: left;
+    }
+    .keys-list tr.active td:first-child {
+      border-left: 3px solid var(--ok);
+    }
+    .keys-list tr.inactive td:first-child {
+      border-left: 3px solid transparent;
+    }
+    .delta { font-variant-numeric: tabular-nums; color: var(--muted); }
+    .status-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    .on { background: var(--ok); box-shadow: 0 0 8px rgba(122,245,200,.55); }
+    .off { background: #3d4f6d; }
+    .serial-status {
+      font-size: 12px;
+      padding: 6px 8px;
+      border-radius: 6px;
+      margin-top: 4px;
+    }
+    .serial-status.ok { background: rgba(122,245,200,.12); color: var(--ok); }
+    .serial-status.err { background: rgba(255,107,122,.12); color: var(--danger); }
+    .serial-status.info { background: rgba(92,200,255,.1); color: var(--accent); }
+    .motor-notes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-height: 28px;
+      font-size: 12px;
+    }
+    .motor-notes .chip {
+      background: #0f141c;
+      border: 1px solid #39475f;
+      border-radius: 6px;
+      padding: 4px 8px;
+      color: var(--ok);
+    }
+    .motor-notes.empty { color: var(--muted); }
+    footer {
+      padding: 8px 16px;
+      font-size: 12px;
+      color: var(--muted);
+      border-top: 1px solid #2a3548;
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>鍵盤キャプチャ・モーター演奏</h1>
+    <div class="toolbar">
+      <button type="button" id="btnShare" class="primary">画面を共有</button>
+      <button type="button" id="btnStop" disabled>共有停止</button>
+      <span class="toolbar" style="margin-left:4px;">
+        <button type="button" id="btnGroupMoveToggle">グループ位置: オフ</button>
+        <button type="button" id="btnKeyHandlesToggle">鍵を微調整: オフ</button>
+        <button type="button" id="btnClearRects">すべて削除</button>
+      </span>
+      <button type="button" id="btnMidiConnect">MIDI 接続</button>
+      <span id="midiStatus" style="font-size: 12px; color: var(--muted);">接続なし</span>
+      <button type="button" id="btnExport">マッピング JSON 出力</button>
+      <label class="filebtn">
+        JSON 読込
+        <input type="file" id="fileImport" accept="application/json" hidden />
+      </label>
+    </div>
+  </header>
+  <main>
+    <div class="stage-wrap">
+      <div class="stage" id="stage">
+        <video id="cap" playsinline muted></video>
+        <canvas id="overlay"></canvas>
+      </div>
+    </div>
+    <aside>
+      <h2>既定色・検出</h2>
+      <fieldset>
+        <legend>標準 RGB（離れた色を「押された」とみなす）</legend>
+        <div class="row">
+          <span class="small">白鍵</span>
+          <input type="color" id="colWhite" value="#eae8dc" />
+          <input type="number" id="numWr" min="0" max="255" step="1" style="width:56px;" aria-label="白 R" />
+          <input type="number" id="numWg" min="0" max="255" step="1" style="width:56px;" aria-label="白 G" />
+          <input type="number" id="numWb" min="0" max="255" step="1" style="width:56px;" aria-label="白 B" />
+        </div>
+        <div class="row">
+          <span class="small">黒鍵</span>
+          <input type="color" id="colBlack" value="#2a2a2a" />
+          <input type="number" id="numBr" min="0" max="255" step="1" style="width:56px;" aria-label="黒 R" />
+          <input type="number" id="numBg" min="0" max="255" step="1" style="width:56px;" aria-label="黒 G" />
+          <input type="number" id="numBb" min="0" max="255" step="1" style="width:56px;" aria-label="黒 B" />
+        </div>
+        <div class="row">
+          <label class="small" for="rngTh">色差閾値</label>
+          <input type="range" id="rngTh" min="4" max="120" value="28" />
+          <span id="lblTh">28</span>
+        </div>
+        <div class="row">
+          <button type="button" id="btnSampleDefaults">現在フレームで標準色を自動取得</button>
+        </div>
+        <div class="row small">
+          （各鍵の矩形の内側をサンプルし、白鍵／黒鍵ごとに平均色を求めて標準色に反映します。鍵が無いときは現在の入力値が使われます。）
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>クイック一列分割</legend>
+        <div class="row">
+          <label class="small" for="selStripeStart">左端の音（半音）</label>
+          <select id="selStripeStart" title="左から何半音目かに相当。C=ド、以降半音ずつ">
+            <option value="0" selected>C（ド）</option>
+            <option value="1">C#（ド#）</option>
+            <option value="2">D（レ）</option>
+            <option value="3">D#（レ#）</option>
+            <option value="4">E（ミ）</option>
+            <option value="5">F（ファ）</option>
+            <option value="6">F#（ファ#）</option>
+            <option value="7">G（ソ）</option>
+            <option value="8">G#（ソ#）</option>
+            <option value="9">A（ラ）</option>
+            <option value="10">A#（ラ#）</option>
+            <option value="11">B（シ）</option>
+          </select>
+        </div>
+        <div class="row">
+          <label class="small" for="numCols">鍵の数</label>
+          <input type="number" id="numCols" min="1" max="120" value="14" style="width:64px;" />
+          <button type="button" id="btnStripe">画面下部帯から均等生成</button>
+        </div>
+        <div class="row small">動画の下端から高さ 8% の帯を横に等分し、左端を基準に<strong>12平均律</strong>（C#/D#/F#/G#/A# に相当する半音が黒鍵）で白／黒を振り分けます。</div>
+        <div class="row small">帯生成のあと、まず<strong>グループ位置</strong>で全体をドラッグ合わせ、必要なら「鍵を微調整」で各鍵の移動・角リサイズ・ダブルクリックでの白／黒切替を行ってください。</div>
+      </fieldset>
+      <fieldset>
+        <legend>モーター演奏（Arduino）</legend>
+        <div class="row">
+          <button type="button" id="btnArduinoConnect" class="primary">Arduino 接続</button>
+          <button type="button" id="btnArduinoDisconnect" disabled>切断</button>
+          <button type="button" id="btnArduinoReset" disabled>リセット</button>
+        </div>
+        <div id="serialStatus" class="serial-status info" hidden>接続待機中…</div>
+        <div class="row">
+          <label class="small">
+            <input type="checkbox" id="chkPolyPhony" checked />
+            ポリフォニー（2 音同時まで）
+          </label>
+        </div>
+        <div class="row small">画面共有で検出した鍵の ON/OFF をリアルタイムで Arduino へ送り、ステッピングモーターで演奏します（115200 baud）。</div>
+        <div class="row">
+          <span class="small">アクティブノート</span>
+        </div>
+        <div id="activeMotors" class="motor-notes empty">—</div>
+      </fieldset>
+      <fieldset>
+        <legend>MIDI 収録</legend>
+        <div class="row">
+          <label class="small" for="numRecPlaybackSpeed">収録時の動画速度</label>
+          <input type="number" id="numRecPlaybackSpeed" min="0.05" max="1" step="0.05" value="1" style="width:72px;" title="動画を低倍速で見ながら収録するときの倍率（1=等速、0.5=半分の速度）。保存時に MIDI の時刻を通常速度へ補正します。" />
+          <span class="small">（1=等速、0.5=半分の速度で見たときは 0.5）</span>
+        </div>
+        <div class="row">
+          <button type="button" id="btnPickC4" disabled>C4を指定</button>
+          <button type="button" id="btnMidiRecStart" disabled>収録開始</button>
+          <button type="button" id="btnMidiRecStop" disabled>収録停止と MIDI 保存</button>
+        </div>
+        <div class="row small" id="lblMidiRec">
+          「C4を指定」→ 鍵クリックでその鍵が水色で強調され C4（m60）。左の鍵は 60 未満も含め半音ずつ下がります。MIDI 収録は常にこの並びと一致。未指定時は画面上の左→右＋「左端の音」で自動。テンポ 120 BPM 固定。
+        </div>
+      </fieldset>
+      <h2>検出状態</h2>
+      <div class="keys-list">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>種類</th>
+              <th>Δ</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="keyRows"></tbody>
+        </table>
+      </div>
+    </aside>
+  </main>
+  <footer>
+    ブラウザの画面共有のみ使用します（サーバー送信なし）。Chrome / Edge を推奨。
+    ● 照明や圧縮アーティファクトにより誤検出する場合は閾値と矩形を調整してください。
+    ● 「Arduino 接続」で steppermusic.ino とシリアル接続し、検出した鍵をリアルタイムでモーター演奏できます。
+  </footer>
+
+  <canvas id="sampleCv" hidden></canvas>
+
+  <script>
+(() => {
+  const video = document.getElementById("cap");
+  const overlay = document.getElementById("overlay");
+  const stage = document.getElementById("stage");
+  const octx = overlay.getContext("2d", { willReadFrequently: true });
+  const sampleCv = document.getElementById("sampleCv");
+  const sctx = sampleCv.getContext("2d", { willReadFrequently: true });
+
+  const btnShare = document.getElementById("btnShare");
+  const btnStop = document.getElementById("btnStop");
+  const btnGroupMoveToggle = document.getElementById("btnGroupMoveToggle");
+  const btnKeyHandlesToggle = document.getElementById("btnKeyHandlesToggle");
+  const btnClearRects = document.getElementById("btnClearRects");
+  const btnExport = document.getElementById("btnExport");
+  const fileImport = document.getElementById("fileImport");
+  const colWhite = document.getElementById("colWhite");
+  const colBlack = document.getElementById("colBlack");
+  const numWr = document.getElementById("numWr");
+  const numWg = document.getElementById("numWg");
+  const numWb = document.getElementById("numWb");
+  const numBr = document.getElementById("numBr");
+  const numBg = document.getElementById("numBg");
+  const numBb = document.getElementById("numBb");
+  const rngTh = document.getElementById("rngTh");
+  const lblTh = document.getElementById("lblTh");
+  const btnSampleDefaults = document.getElementById("btnSampleDefaults");
+  const selStripeStart = document.getElementById("selStripeStart");
+  const numCols = document.getElementById("numCols");
+  const btnStripe = document.getElementById("btnStripe");
+  const keyRows = document.getElementById("keyRows");
+  const btnPickC4 = document.getElementById("btnPickC4");
+  const btnMidiRecStart = document.getElementById("btnMidiRecStart");
+  const btnMidiRecStop = document.getElementById("btnMidiRecStop");
+  const lblMidiRec = document.getElementById("lblMidiRec");
+  const numRecPlaybackSpeed = document.getElementById("numRecPlaybackSpeed");
+  const btnMidiConnect = document.getElementById("btnMidiConnect");
+  const midiStatus = document.getElementById("midiStatus");
+  const btnArduinoConnect = document.getElementById("btnArduinoConnect");
+  const btnArduinoDisconnect = document.getElementById("btnArduinoDisconnect");
+  const btnArduinoReset = document.getElementById("btnArduinoReset");
+  const serialStatus = document.getElementById("serialStatus");
+  const chkPolyPhony = document.getElementById("chkPolyPhony");
+  const activeMotorsEl = document.getElementById("activeMotors");
+
+  let stream = null;
+  // Web Serial API（Arduino モーター）
+  let serialPort = null;
+  let serialReader = null;
+  let serialWriter = null;
+  let motorRealtimeEnabled = false;
+  /** @type {Map<number, number>} motorNum -> midiNote */
+  const activeMotors = new Map();
+  /** @type {Map<number, number>} midiNote -> motorNum */
+  const notesOnMotors = new Map();
+  /** @type {Map<number, number>} keyId -> motorNum */
+  const keysOnMotors = new Map();
+  /** @type {Map<number, number>} motorNum -> keyId */
+  const motorKeyOwners = new Map();
+  /** @type {Map<number, boolean>} リアルタイムモーター送信用の前フレーム状態 */
+  let motorRealtimePrevOn = new Map();
+  /** シリアル送信を直列化し、Note On 完了前の Note Off 取りこぼしを防ぐ */
+  let motorSerialQueue = Promise.resolve();
+  // Web MIDI API
+  let midiAccess = null;
+  let midiOutputs = [];
+  let currentMidiOutput = null;
+  let realtimeMidiEnabled = false;
+  /** @type {Map<number, boolean>} リアルタイム MIDI 送信用の前フレーム状態 */
+  let midiRealtimePrevOn = new Map();
+  /** ON のとき任意の鍵をドラッグすると全鍵が同じ量だけ並進（画面上の位置合わせ用） */
+  let groupMoveKeys = false;
+  let showKeyHandles = false;
+  /** ON のとき次にクリックした鍵を C4（MIDI 60）として全体に半音割当 */
+  let pickC4Mode = false;
+  /** ユーザーが指定した C4 対応鍵の id。buildMidiNoteMap がこれを 60、左へ半音ずつ減算して記録する */
+  let midiC4KeyId = null;
+  let dragKind = null; // null | move | resize | moveGroup
+  let resizeHandle = null; // nw,ne,se,sw
+  /** @type {{ nx: number; ny: number; nw: number; nh: number; kind: 'white'|'black'; id: number; midiNote?: number }[]} */
+  let keys = [];
+  let activeIndex = null;
+  let nextId = 1;
+  const dragRef = {
+    ix: -1,
+    startClientX: 0,
+    startClientY: 0,
+    nx0: 0, ny0: 0, nw0: 0, nh0: 0,
+    /** @type {{ nx: number; ny: number }[] | null} 並進ドラッグ開始時の鍵ごとの左上角 */
+    snapForGroup: null,
+  };
+
+  function syncOverlayCursorStyle() {
+    if (pickC4Mode) {
+      overlay.style.cursor = "crosshair";
+      return;
+    }
+    if (dragKind === "moveGroup") {
+      overlay.style.cursor = "grabbing";
+      return;
+    }
+    overlay.style.cursor = groupMoveKeys && keys.length ? "grab" : "default";
+  }
+
+  /** 鍵矩形と動画正規化領域 [0,1]² の交差面積 ÷ 鍵面積（画面外寄りは検出しない判定に使用） */
+  function keyVideoOverlapRatio(key) {
+    const x0 = Math.max(0, key.nx);
+    const y0 = Math.max(0, key.ny);
+    const x1 = Math.min(1, key.nx + key.nw);
+    const y1 = Math.min(1, key.ny + key.nh);
+    const iw = x1 - x0;
+    const ih = y1 - y0;
+    if (iw <= 0 || ih <= 0) return 0;
+    const inter = iw * ih;
+    const a = key.nw * key.nh;
+    return a > 0 ? inter / a : 0;
+  }
+
+  /** 動画レイアウト（object-fit: contain）。幅・高さはステージの client 寸法に統一（キャンバスと一致させギャップを防ぐ）。 */
+  function videoLayout() {
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    if (!vw || !vh) return null;
+    const cw = Math.max(1, stage.clientWidth);
+    const ch = Math.max(1, stage.clientHeight);
+    const scale = Math.min(cw / vw, ch / vh);
+    const rw = vw * scale;
+    const rh = vh * scale;
+    const ox = (cw - rw) / 2;
+    const oy = (ch - rh) / 2;
+    return { vw, vh, rw, rh, ox, oy, rectW: cw, rectH: ch };
+  }
+
+  function resizeOverlay() {
+    overlay.width = Math.max(1, stage.clientWidth);
+    overlay.height = Math.max(1, stage.clientHeight);
+    renderOverlay();
+  }
+
+  /** 画面上のイベント座標をステージ（＝キャンバス論理座標系）へのローカルに変換 */
+  function pointerOnStage(clientX, clientY) {
+    const sr = stage.getBoundingClientRect();
+    return { lx: clientX - sr.left, ly: clientY - sr.top };
+  }
+
+  function stageToNormalized(clientX, clientY) {
+    const L = videoLayout();
+    if (!L) return null;
+    const { lx, ly } = pointerOnStage(clientX, clientY);
+    if (lx < L.ox || ly < L.oy || lx > L.ox + L.rw || ly > L.oy + L.rh) return null;
+    const nx = (lx - L.ox) / L.rw;
+    const ny = (ly - L.oy) / L.rh;
+    return { nx, ny, L };
+  }
+
+  function normalizedToOverlayRect(key) {
+    const L = videoLayout();
+    if (!L) return null;
+    const x = L.ox + key.nx * L.rw;
+    const y = L.oy + key.ny * L.rh;
+    const w = key.nw * L.rw;
+    const h = key.nh * L.rh;
+    return { x, y, w, h };
+  }
+
+  function hitTest(px, py) {
+    const L = videoLayout();
+    if (!L) return null;
+    for (let i = keys.length - 1; i >= 0; i--) {
+      const r = normalizedToOverlayRect(keys[i]);
+      if (!r) continue;
+      const hs = Math.max(12, Math.min(r.w, r.h) * 0.12);
+      if (!groupMoveKeys && showKeyHandles) {
+        const handles = [
+          ["nw", r.x, r.y],
+          ["ne", r.x + r.w - hs, r.y],
+          ["sw", r.x, r.y + r.h - hs],
+          ["se", r.x + r.w - hs, r.y + r.h - hs],
+        ];
+        for (const [name, hx, hy] of handles) {
+          if (px >= hx && px <= hx + hs && py >= hy && py <= hy + hs)
+            return { type: "resize", index: i, handle: name };
+        }
+      }
+      if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h)
+        return { type: "move", index: i };
+    }
+    return null;
+  }
+
+  function parseHex(rgb) {
+    const m = /^#?([a-f\d]{6})$/i.exec(rgb.trim());
+    if (!m) return [255, 255, 255];
+    const n = parseInt(m[1], 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+
+  function rgbToHex(r, g, b) {
+    return "#" + [r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("");
+  }
+
+  function bindColor(hexInput, rr, gg, bb) {
+    function fromHex() {
+      const [r, g, b] = parseHex(hexInput.value);
+      rr.value = String(r); gg.value = String(g); bb.value = String(b);
+    }
+    function fromRgb() {
+      const r = Math.max(0, Math.min(255, Number(rr.value) || 0));
+      const g = Math.max(0, Math.min(255, Number(gg.value) || 0));
+      const b = Math.max(0, Math.min(255, Number(bb.value) || 0));
+      rr.value = String(r); gg.value = String(g); bb.value = String(b);
+      hexInput.value = rgbToHex(r, g, b);
+    }
+    hexInput.addEventListener("input", fromHex);
+    [rr, gg, bb].forEach((el) => el.addEventListener("change", fromRgb));
+    fromRgb();
+    return { refreshFromRgb: fromRgb };
+  }
+
+  bindColor(colWhite, numWr, numWg, numWb);
+  bindColor(colBlack, numBr, numBg, numBb);
+
+  function getRefRgb(kind) {
+    if (kind === "black")
+      return [Number(numBr.value) || 0, Number(numBg.value) || 0, Number(numBb.value) || 0];
+    return [
+      Number(numWr.value) || 255,
+      Number(numWg.value) || 255,
+      Number(numWb.value) || 255,
+    ];
+  }
+
+  rngTh.addEventListener("input", () => {
+    lblTh.textContent = rngTh.value;
+  });
+  lblTh.textContent = rngTh.value;
+
+  const MIDI_PPQ = 480;
+  /** MIDI のテンポ（メタ・tick 変換の両方に使用。自動・固定） */
+  const AUTO_MIDI_BPM = 120;
+
+  /**
+   * 「左端の音（半音）」セレクトに合わせ、中央ド=C4=60 の付近で左端の MIDI 番号を決める。
+   * C→60, C#→61, …, B→71。鍵を横に並べた i 番目は base + i（127 で打ち切り）。
+   */
+  function autoMidiBaseFromStripe() {
+    const pc = Math.max(
+      0,
+      Math.min(11, Math.floor(Number(selStripeStart.value) || 0)),
+    );
+    return Math.min(127, 60 + pc);
+  }
+
+  let midiRecording = false;
+  let midiRecT0 = 0;
+  /** @type {{ t: number; b0: number; b1: number; b2: number }[]} */
+  let midiRecEvents = [];
+  /** @type {Map<number, boolean>} */
+  let midiRecPrevOn = new Map();
+
+  function clampMidi(n) {
+    return Math.max(0, Math.min(127, Math.round(Number(n) || 0)));
+  }
+
+  const MIDI_REC_LBL_IDLE =
+    "「C4を指定」→ 鍵クリックでその鍵が水色で強調され C4（m60）。左の鍵は 60 未満も含め半音ずつ下がります。MIDI 収録は常にこの並びと一致。未指定時は画面上の左→右＋「左端の音」で自動。テンポ 120 BPM 固定。低倍速で動画を見ながら収録するときは「収録時の動画速度」にその倍率（例: 0.5）を入れると、保存される MIDI は通常速度のタイミングに補正されます。";
+
+  /** 収録対象動画の再生倍率（等速=1、半分の速度=0.5）。MIDI 書き出し時に wall-clock をこれで縮めて通常テンポ相当にする */
+  function getMidiRecordingPlaybackFactor() {
+    const raw = Number(numRecPlaybackSpeed.value);
+    if (!Number.isFinite(raw) || raw <= 0) return 1;
+    return Math.max(0.05, Math.min(1, raw));
+  }
+
+  /**
+   * MIDI 割当・C4 指定で共通。上から下、同じ行付近なら左から右（矩形中心で比較）。
+   * @returns {{ nx: number; ny: number; nw: number; nh: number; kind: 'white'|'black'; id: number; midiNote?: number }[]}
+   */
+  function sortKeysSpatially() {
+    return keys.slice().sort((a, b) => {
+      const cy = a.ny + a.nh / 2 - (b.ny + b.nh / 2);
+      if (Math.abs(cy) > 1e-5) return cy;
+      return a.nx + a.nw / 2 - (b.nx + b.nw / 2);
+    });
+  }
+
+  /** クリックした鍵を C4 アンカーにし、sortKeysSpatially 順で 60 + (i - j)。低い鍵は 60 未満もそのまま clamp。 */
+  function applyC4Anchor(anchorKey) {
+    const sorted = sortKeysSpatially();
+    const j = sorted.findIndex((k) => k.id === anchorKey.id);
+    if (j < 0) return;
+    midiC4KeyId = anchorKey.id;
+    sorted.forEach((k, i) => {
+      k.midiNote = clampMidi(60 + (i - j));
+    });
+  }
+
+  /**
+   * 収録・表示の単一の音源。C4 指定時はその鍵を 60、左が減ら右が増（0–127）。
+   * 未指定時は「左端の音」を 0 番目に相当させ spatial 順で base+i。
+   */
+  function buildMidiNoteMap() {
+    const m = new Map();
+    if (!keys.length) return m;
+    if (midiC4KeyId != null && !keys.some((x) => x.id === midiC4KeyId)) {
+      midiC4KeyId = null;
+    }
+    const sorted = sortKeysSpatially();
+    const j =
+      midiC4KeyId != null
+        ? sorted.findIndex((x) => x.id === midiC4KeyId)
+        : -1;
+    const base = autoMidiBaseFromStripe();
+    sorted.forEach((k, i) => {
+      const n = j >= 0 ? 60 + (i - j) : base + i;
+      m.set(k.id, clampMidi(n));
+    });
+    return m;
+  }
+
+  /** 収録直前に各 key.midiNote を map と一致させる（JSON 出力とも一致） */
+  function syncKeyMidiNotesFromMap() {
+    const map = buildMidiNoteMap();
+    for (const k of keys) {
+      const v = map.get(k.id);
+      if (v != null) k.midiNote = v;
+    }
+  }
+
+  function setPickC4Mode(on) {
+    pickC4Mode = on;
+    btnPickC4.textContent = on ? "C4指定をやめる" : "C4を指定";
+    lblMidiRec.textContent = on
+      ? "C4 指定モード: 鍵の上をクリックしてください（キャンセルは「C4指定をやめる」）。"
+      : MIDI_REC_LBL_IDLE;
+    syncOverlayCursorStyle();
+  }
+
+  function syncPickC4Button() {
+    btnPickC4.disabled = keys.length === 0;
+    if (keys.length === 0 && pickC4Mode) setPickC4Mode(false);
+  }
+
+  /** 収録開始前に midiNote を最新のマップへそろえる */
+  function ensureMidiNotesForRecording() {
+    syncKeyMidiNotesFromMap();
+  }
+
+  function syncMidiRecButtons() {
+    const can = !!video.srcObject && keys.length > 0;
+    btnMidiRecStart.disabled = !can || midiRecording;
+    btnMidiRecStop.disabled = !midiRecording;
+  }
+
+  function abortMidiRecording() {
+    if (!midiRecording) return;
+    midiRecording = false;
+    midiRecEvents = [];
+    midiRecPrevOn = new Map();
+    lblMidiRec.textContent = pickC4Mode
+      ? "C4 指定モード: 鍵の上をクリックしてください（キャンセルは「C4指定をやめる」）。"
+      : MIDI_REC_LBL_IDLE;
+    syncMidiRecButtons();
+  }
+
+  function startMidiRecording() {
+    if (!video.srcObject || !keys.length) {
+      alert("画面共有中で、かつ鍵が1つ以上あるときのみ収録できます。");
+      return;
+    }
+    if (pickC4Mode) setPickC4Mode(false);
+    ensureMidiNotesForRecording();
+    midiRecording = true;
+    midiRecEvents = [];
+    midiRecPrevOn = new Map();
+    midiRecT0 = performance.now();
+    lblMidiRec.textContent = "● 収録中…（停止で MIDI ファイルを保存）";
+    syncMidiRecButtons();
+  }
+
+  function appendMidiVLQ(bytes, n) {
+    let v = n >>> 0;
+    const stack = [v & 0x7f];
+    v >>= 7;
+    while (v > 0) {
+      stack.unshift((v & 0x7f) | 0x80);
+      v >>= 7;
+    }
+    for (const b of stack) bytes.push(b);
+  }
+
+  function u16be(n) {
+    return [(n >> 8) & 0xff, n & 0xff];
+  }
+
+  function u32be(n) {
+    return [(n >> 24) & 0xff, (n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+  }
+
+  /**
+   * @param {{ t: number; b0: number; b1: number; b2: number }[]} absEv 絶対時刻 ms
+   */
+  function buildMidiType0(absEv, bpm) {
+    bpm = Math.max(20, Math.min(300, Number(bpm) || 120));
+    const usPerQuarter = Math.round(6e7 / bpm);
+    const tr = [];
+    tr.push(0);
+    tr.push(0xff, 0x51, 0x03, (usPerQuarter >> 16) & 0xff, (usPerQuarter >> 8) & 0xff, usPerQuarter & 0xff);
+    const name = "Keyboard Capture";
+    const enc = new TextEncoder();
+    const nb = enc.encode(name);
+    tr.push(0);
+    tr.push(0xff, 0x03, nb.length, ...nb);
+
+    const sorted = absEv.slice().sort((a, b) => a.t - b.t || a.b0 - b.b0);
+    let prevTick = 0;
+    for (const ev of sorted) {
+      const tick = Math.round((ev.t / 1000) * (bpm / 60) * MIDI_PPQ);
+      const d = Math.max(0, tick - prevTick);
+      prevTick = tick;
+      appendMidiVLQ(tr, d);
+      tr.push(ev.b0 & 0xff, ev.b1 & 0xff, ev.b2 & 0xff);
+    }
+    tr.push(0);
+    tr.push(0xff, 0x2f, 0x00);
+
+    const trackLen = tr.length;
+    const header = [];
+    header.push(...enc.encode("MThd"), ...u32be(6), ...u16be(0), ...u16be(1), ...u16be(MIDI_PPQ));
+    const trackChunk = [...enc.encode("MTrk"), ...u32be(trackLen), ...tr];
+    return new Uint8Array([...header, ...trackChunk]);
+  }
+
+  function stopMidiRecordingAndExport() {
+    if (!midiRecording) return;
+    const speedFactor = getMidiRecordingPlaybackFactor();
+    const tEndRaw = performance.now() - midiRecT0;
+    const stillOn = new Map(midiRecPrevOn);
+    const noteMapStop = buildMidiNoteMap();
+    for (const k of keys) {
+      if (stillOn.get(k.id) === true) {
+        const note = noteMapStop.get(k.id) ?? 60;
+        midiRecEvents.push({ t: tEndRaw, b0: 0x80, b1: note, b2: 0 });
+      }
+    }
+    const events = midiRecEvents.map((e) => ({
+      t: e.t * speedFactor,
+      b0: e.b0,
+      b1: e.b1,
+      b2: e.b2,
+    }));
+    midiRecEvents = [];
+    midiRecording = false;
+    midiRecPrevOn = new Map();
+    lblMidiRec.textContent = pickC4Mode
+      ? "C4 指定モード: 鍵の上をクリックしてください（キャンセルは「C4指定をやめる」）。"
+      : MIDI_REC_LBL_IDLE;
+    syncMidiRecButtons();
+    const hasNoteOn = events.some((e) => (e.b0 & 0xf0) === 0x90);
+    if (!hasNoteOn) {
+      alert("保存する MIDI イベントがありません。");
+      return;
+    }
+    const data = buildMidiType0(events, AUTO_MIDI_BPM);
+    const blob = new Blob([data], { type: "audio/midi" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "keyboard_capture.mid";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function processMidiRecordingFrame(thSq) {
+    if (!midiRecording) return;
+    const t = performance.now() - midiRecT0;
+    const noteMap = buildMidiNoteMap();
+    for (const k of keys) {
+      const d = stateDelta[k.id] ?? 0;
+      const on = d * d >= thSq;
+      const was = midiRecPrevOn.get(k.id) === true;
+      const note = noteMap.get(k.id) ?? 60;
+      if (on && !was) {
+        midiRecEvents.push({ t, b0: 0x90, b1: note, b2: 100 });
+      } else if (!on && was) {
+        midiRecEvents.push({ t, b0: 0x80, b1: note, b2: 0 });
+      }
+      midiRecPrevOn.set(k.id, on);
+    }
+  }
+
+  /** Web MIDI API の初期化。接続ボタンクリック時に呼ぶ */
+  async function initWebMidi() {
+    try {
+      if (!navigator.requestMIDIAccess) {
+        alert("このブラウザは Web MIDI API に対応していません（Chrome / Edge 推奨）。");
+        return false;
+      }
+      midiAccess = await navigator.requestMIDIAccess();
+      updateMidiOutputList();
+      return true;
+    } catch (err) {
+      alert("MIDI アクセス許可が取得できませんでした。\n" + (err && err.message ? err.message : ""));
+      console.error(err);
+      return false;
+    }
+  }
+
+  /** MIDI 出力デバイスの一覧を取得・更新 */
+  function updateMidiOutputList() {
+    if (!midiAccess) return;
+    midiOutputs = [];
+    const outputs = midiAccess.outputs;
+    outputs.forEach((output) => {
+      midiOutputs.push(output);
+    });
+    if (midiOutputs.length === 0) {
+      currentMidiOutput = null;
+      midiStatus.textContent = "MIDI デバイスが見つかりません";
+      realtimeMidiEnabled = false;
+    } else if (midiOutputs.length === 1) {
+      currentMidiOutput = midiOutputs[0];
+      midiStatus.textContent = "MIDI: " + (currentMidiOutput.name || "出力");
+      realtimeMidiEnabled = true;
+      midiRealtimePrevOn.clear();
+    } else {
+      selectMidiOutputDialog();
+    }
+  }
+
+  /** 複数の MIDI デバイスがある場合、選択ダイアログを表示 */
+  function selectMidiOutputDialog() {
+    const names = midiOutputs.map((o, i) => `[${i}] ${o.name || "MIDI Out " + i}`).join("\n");
+    const input = prompt(
+      "接続する MIDI デバイスを選択してください:\n\n" + names,
+      "0"
+    );
+    if (input === null) {
+      currentMidiOutput = null;
+      midiStatus.textContent = "接続をキャンセルしました";
+      realtimeMidiEnabled = false;
+      return;
+    }
+    const idx = parseInt(input, 10);
+    if (idx >= 0 && idx < midiOutputs.length) {
+      currentMidiOutput = midiOutputs[idx];
+      midiStatus.textContent = "MIDI: " + (currentMidiOutput.name || "出力");
+      realtimeMidiEnabled = true;
+      midiRealtimePrevOn.clear();
+    } else {
+      alert("不正な選択です。");
+      currentMidiOutput = null;
+      midiStatus.textContent = "接続できませんでした";
+      realtimeMidiEnabled = false;
+    }
+  }
+
+  /** MIDI デバイス接続を解除 */
+  function disconnectMidiDevice() {
+    currentMidiOutput = null;
+    realtimeMidiEnabled = false;
+    midiRealtimePrevOn.clear();
+    midiStatus.textContent = "接続なし";
+    btnMidiConnect.textContent = "MIDI 接続";
+  }
+
+  /** リアルタイムで MIDI Note On/Off を送信。検出フレーム内で呼ぶ */
+  function processMidiRealtimeFrame(thSq) {
+    if (!realtimeMidiEnabled || !currentMidiOutput || !keys.length) return;
+    const noteMap = buildMidiNoteMap();
+    for (const k of keys) {
+      const d = stateDelta[k.id] ?? 0;
+      const on = d * d >= thSq;
+      const was = midiRealtimePrevOn.get(k.id) === true;
+      if (on && !was) {
+        const note = noteMap.get(k.id) ?? 60;
+        try {
+          currentMidiOutput.send([0x90, note, 100]);
+        } catch (e) {
+          console.warn("MIDI Note On 送信失敗:", e);
+        }
+      } else if (!on && was) {
+        const note = noteMap.get(k.id) ?? 60;
+        try {
+          currentMidiOutput.send([0x80, note, 0]);
+        } catch (e) {
+          console.warn("MIDI Note Off 送信失敗:", e);
+        }
+      }
+      midiRealtimePrevOn.set(k.id, on);
+    }
+  }
+
+  const MOTOR_NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+  function midiNoteToName(midiNote) {
+    const n = Math.round(Number(midiNote) || 0);
+    const octave = Math.floor(n / 12) - 1;
+    return MOTOR_NOTE_NAMES[((n % 12) + 12) % 12] + octave;
+  }
+
+  function updateStatusSerial(type, message) {
+    serialStatus.hidden = false;
+    serialStatus.className = "serial-status " + (type === "success" ? "ok" : type === "error" ? "err" : "info");
+    serialStatus.textContent = message;
+  }
+
+  function updateActiveMotorsDisplay() {
+    if (activeMotors.size === 0) {
+      activeMotorsEl.className = "motor-notes empty";
+      activeMotorsEl.textContent = "—";
+      return;
+    }
+    activeMotorsEl.className = "motor-notes";
+    activeMotorsEl.innerHTML = "";
+    for (const [motorNum, midiNote] of activeMotors) {
+      const chip = document.createElement("span");
+      chip.className = "chip";
+      chip.textContent = midiNoteToName(midiNote) + " (M" + motorNum + ")";
+      activeMotorsEl.appendChild(chip);
+    }
+  }
+
+  async function connectSerial() {
+    try {
+      if (!navigator.serial) {
+        updateStatusSerial("error", "Web Serial API 未サポート（Chrome / Edge 推奨）");
+        return;
+      }
+      serialPort = await navigator.serial.requestPort();
+      await serialPort.open({ baudRate: 115200 });
+      serialReader = serialPort.readable.getReader();
+      serialWriter = serialPort.writable.getWriter();
+      motorRealtimeEnabled = true;
+      motorRealtimePrevOn.clear();
+      keysOnMotors.clear();
+      motorKeyOwners.clear();
+      motorSerialQueue = Promise.resolve();
+      updateStatusSerial("success", "Arduino 接続成功");
+      btnArduinoConnect.disabled = true;
+      btnArduinoDisconnect.disabled = false;
+      btnArduinoReset.disabled = false;
+      readSerial();
+    } catch (error) {
+      console.error("Serial connection error:", error);
+      motorRealtimeEnabled = false;
+      if (error.message && (error.message.includes("No port selected") || error.name === "NotFoundError")) {
+        updateStatusSerial("error", "ポート選択がキャンセルされました。");
+      } else {
+        updateStatusSerial("error", "Arduino 接続失敗: " + error.message);
+      }
+    }
+  }
+
+  async function disconnectSerial() {
+    try {
+      motorRealtimeEnabled = false;
+      motorRealtimePrevOn.clear();
+      if (serialReader) {
+        try { await serialReader.cancel(); } catch (_) { /* ignore */ }
+        serialReader = null;
+      }
+      if (serialWriter) {
+        try { await serialWriter.releaseLock(); } catch (_) { /* ignore */ }
+        serialWriter = null;
+      }
+      if (serialPort) {
+        await serialPort.close();
+        serialPort = null;
+      }
+      activeMotors.clear();
+      notesOnMotors.clear();
+      keysOnMotors.clear();
+      motorKeyOwners.clear();
+      motorSerialQueue = Promise.resolve();
+      updateActiveMotorsDisplay();
+      updateStatusSerial("info", "Arduino 切断");
+      btnArduinoConnect.disabled = false;
+      btnArduinoDisconnect.disabled = true;
+      btnArduinoReset.disabled = true;
+    } catch (error) {
+      console.error("Serial disconnect error:", error);
+    }
+  }
+
+  async function readSerial() {
+    if (!serialReader) return;
+    try {
+      while (true) {
+        const { value, done } = await serialReader.read();
+        if (done) break;
+        console.log("Received from Arduino:", value);
+      }
+    } catch (error) {
+      console.error("Serial read error:", error);
+    }
+  }
+
+  function enqueueMotorTask(task) {
+    motorSerialQueue = motorSerialQueue
+      .then(() => task())
+      .catch((err) => {
+        console.error("Motor serial queue error:", err);
+      });
+  }
+
+  function clearMotorKeyMapping(motorNum) {
+    const keyId = motorKeyOwners.get(motorNum);
+    motorKeyOwners.delete(motorNum);
+    if (keyId !== undefined) keysOnMotors.delete(keyId);
+  }
+
+  async function sendStopNote(motorNum) {
+    if (!serialWriter || !serialPort) return;
+
+    try {
+      const msg = new Uint8Array([0x80, motorNum]);
+      await serialWriter.write(msg);
+      const note = activeMotors.get(motorNum);
+      activeMotors.delete(motorNum);
+      if (note !== undefined) notesOnMotors.delete(note);
+      clearMotorKeyMapping(motorNum);
+      updateActiveMotorsDisplay();
+    } catch (error) {
+      console.error("Send stop note error:", error);
+    }
+  }
+
+  async function motorNoteOnForKey(keyId, midiNote) {
+    if (!serialWriter || !serialPort) return;
+    if (motorRealtimePrevOn.get(keyId) !== true) return;
+    if (keysOnMotors.has(keyId)) return;
+
+    if (notesOnMotors.has(midiNote)) {
+      await sendStopNote(notesOnMotors.get(midiNote));
+    }
+    if (motorRealtimePrevOn.get(keyId) !== true) return;
+
+    let motorNum = -1;
+    for (let m = 0; m < 2; m++) {
+      if (!activeMotors.has(m)) {
+        motorNum = m;
+        break;
+      }
+    }
+
+    if (motorNum === -1) {
+      if (!chkPolyPhony.checked) {
+        let lowestNote = 127;
+        let lowestMotor = -1;
+        for (const [note, motor] of notesOnMotors) {
+          if (note < lowestNote) {
+            lowestNote = note;
+            lowestMotor = motor;
+          }
+        }
+        if (lowestMotor !== -1) {
+          await sendStopNote(lowestMotor);
+          motorNum = lowestMotor;
+        }
+      } else {
+        return;
+      }
+    }
+    if (motorNum === -1 || motorRealtimePrevOn.get(keyId) !== true) return;
+
+    try {
+      const msg = new Uint8Array([0x90, midiNote]);
+      await serialWriter.write(msg);
+      activeMotors.set(motorNum, midiNote);
+      notesOnMotors.set(midiNote, motorNum);
+      keysOnMotors.set(keyId, motorNum);
+      motorKeyOwners.set(motorNum, keyId);
+      updateActiveMotorsDisplay();
+    } catch (error) {
+      console.error("Send noteOn error:", error);
+    }
+  }
+
+  async function motorNoteOffForKey(keyId) {
+    const motorNum = keysOnMotors.get(keyId);
+    if (motorNum === undefined) return;
+    await sendStopNote(motorNum);
+  }
+
+  async function resetArduino() {
+    if (!serialWriter || !serialPort) return;
+    try {
+      const msg = new Uint8Array([0xff]);
+      await serialWriter.write(msg);
+      activeMotors.clear();
+      notesOnMotors.clear();
+      keysOnMotors.clear();
+      motorKeyOwners.clear();
+      motorRealtimePrevOn.clear();
+      motorSerialQueue = Promise.resolve();
+      updateActiveMotorsDisplay();
+      updateStatusSerial("success", "リセット完了");
+    } catch (error) {
+      console.error("Reset error:", error);
+    }
+  }
+
+  /** リアルタイムで検出結果を Arduino モーターへ送信 */
+  function processMotorRealtimeFrame(thSq) {
+    if (!motorRealtimeEnabled || !serialWriter || !serialPort || !keys.length) return;
+    const noteMap = buildMidiNoteMap();
+    for (const k of keys) {
+      const d = stateDelta[k.id] ?? 0;
+      const on = d * d >= thSq;
+      const was = motorRealtimePrevOn.get(k.id) === true;
+      const note = noteMap.get(k.id) ?? 60;
+      if (on && !was) {
+        motorRealtimePrevOn.set(k.id, true);
+        enqueueMotorTask(() => motorNoteOnForKey(k.id, note));
+      } else if (!on && was) {
+        motorRealtimePrevOn.set(k.id, false);
+        enqueueMotorTask(() => motorNoteOffForKey(k.id));
+      }
+    }
+    // 取りこぼし: 検出 OFF なのにモーター割当が残っている鍵を強制停止
+    for (const k of keys) {
+      const d = stateDelta[k.id] ?? 0;
+      const on = d * d >= thSq;
+      if (!on && keysOnMotors.has(k.id)) {
+        motorRealtimePrevOn.set(k.id, false);
+        enqueueMotorTask(() => motorNoteOffForKey(k.id));
+      }
+    }
+  }
+
+  /** 色差（平方距離。※√は閾値と比較するキー数が多いときに省略可能） */
+  function rgbDistanceSq(a, b) {
+    const dr = a[0] - b[0];
+    const dg = a[1] - b[1];
+    const db = a[2] - b[2];
+    return dr * dr + dg * dg + db * db;
+  }
+
+  /**
+   * 鍵間の隙間／縁を避けるため、矩形の幾何中心を維持しつつ周囲を除いた領域を動画ピクセルへ。
+   * 色差判定・標準色サンプルのみこれを使う。
+   */
+  function keySamplingVideoRect(key) {
+    if (keyVideoOverlapRatio(key) < 0.15) return null;
+    const L = videoLayout();
+    if (!L) return null;
+    const vw = L.vw, vh = L.vh;
+    const gapXKey = key.kind === "black" ? 0.14 : 0.18;
+    const gapYKey = key.kind === "black" ? 0.12 : 0.10;
+    let innerW = key.nw * (1 - 2 * gapXKey);
+    let innerH = key.nh * (1 - 2 * gapYKey);
+    innerW = Math.max(innerW, key.nw * 0.22, 4 / vw);
+    innerH = Math.max(innerH, key.nh * 0.26, 4 / vh);
+    innerW = Math.min(innerW, key.nw);
+    innerH = Math.min(innerH, key.nh);
+    const cx = key.nx + key.nw / 2;
+    const cy = key.ny + key.nh / 2;
+    let snx = cx - innerW / 2;
+    let sny = cy - innerH / 2;
+    snx = Math.max(key.nx, Math.min(key.nx + key.nw - innerW, snx));
+    sny = Math.max(key.ny, Math.min(key.ny + key.nh - innerH, sny));
+    snx = Math.max(0, Math.min(1 - innerW, snx));
+    sny = Math.max(0, Math.min(1 - innerH, sny));
+    let vx0 = Math.floor(snx * vw);
+    let vy0 = Math.floor(sny * vh);
+    let vx1 = Math.ceil((snx + innerW) * vw);
+    let vy1 = Math.ceil((sny + innerH) * vh);
+    vx0 = Math.max(0, Math.min(vw - 1, vx0));
+    vy0 = Math.max(0, Math.min(vh - 1, vy0));
+    vx1 = Math.max(vx0 + 1, Math.min(vw, vx1));
+    vy1 = Math.max(vy0 + 1, Math.min(vh, vy1));
+    return { vx0, vy0, vw: vx1 - vx0, vh: vy1 - vy0 };
+  }
+
+  /**
+   * sampleCv に描画済みの矩形から平均 RGB。
+   * 各ピクセルごとに getImageData していたボトルネックを、1 回の getImageData で解消。
+   */
+  function avgRgbOfVideoRect(vRect) {
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    if (!vw || !vh || !video.srcObject) return null;
+    let { vx0, vy0, vw: rw, vh: rh } = vRect;
+    vx0 = Math.max(0, Math.min(vw - 1, vx0));
+    vy0 = Math.max(0, Math.min(vh - 1, vy0));
+    rw = Math.max(1, Math.min(rw, vw - vx0));
+    rh = Math.max(1, Math.min(rh, vh - vy0));
+    const img = sctx.getImageData(vx0, vy0, rw, rh);
+    const data = img.data;
+    const stepX = Math.max(1, Math.floor(rw / 24));
+    const stepY = Math.max(1, Math.floor(rh / 24));
+    let r = 0, g = 0, b = 0, n = 0;
+    for (let iy = 0; iy < rh; iy += stepY) {
+      const y = Math.min(rh - 1, iy);
+      const rowOfs = y * rw * 4;
+      for (let ix = 0; ix < rw; ix += stepX) {
+        const x = Math.min(rw - 1, ix);
+        const i = rowOfs + x * 4;
+        r += data[i];
+        g += data[i + 1];
+        b += data[i + 2];
+        n++;
+      }
+    }
+    if (!n) return null;
+    return [Math.round(r / n), Math.round(g / n), Math.round(b / n)];
+  }
+
+  function sampleKindDefaultsFromFrame() {
+    const sums = {
+      white: { r: 0, g: 0, b: 0, n: 0 },
+      black: { r: 0, g: 0, b: 0, n: 0 },
+    };
+    if (!captureVideoFrameBitmap()) {
+      alert("画面共有中のときのみ使えます。");
+      return;
+    }
+    for (const k of keys) {
+      const vr = keySamplingVideoRect(k);
+      if (!vr) continue;
+      const avg = avgRgbOfVideoRect(vr);
+      if (!avg) continue;
+      const s = sums[k.kind];
+      s.r += avg[0]; s.g += avg[1]; s.b += avg[2]; s.n++;
+    }
+    const apply = (hexInput, rr, gg, bb, agg) => {
+      if (!agg || agg.n < 1) return;
+      const r = Math.round(agg.r / agg.n), g = Math.round(agg.g / agg.n), b = Math.round(agg.b / agg.n);
+      rr.value = String(r); gg.value = String(g); bb.value = String(b);
+      hexInput.value = rgbToHex(r, g, b);
+    };
+    apply(colWhite, numWr, numWg, numWb, sums.white.n ? sums.white : null);
+    apply(colBlack, numBr, numBg, numBb, sums.black.n ? sums.black : null);
+  }
+
+  btnSampleDefaults.addEventListener("click", () => {
+    sampleKindDefaultsFromFrame();
+  });
+
+  const stateDelta = {};
+  let lastKeySignature = "";
+
+  function getKeySignature() {
+    if (!keys.length) return "";
+    return keys
+      .map((k) => k.id)
+      .sort((a, b) => a - b)
+      .join(",");
+  }
+
+  /** 検出対象があるフレームは video を一度だけ転送し、矩形サンプルをまとめる */
+  function captureVideoFrameBitmap() {
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    if (!vw || !vh || !video.srcObject) return false;
+    if (sampleCv.width !== vw || sampleCv.height !== vh) {
+      sampleCv.width = vw;
+      sampleCv.height = vh;
+    }
+    sctx.drawImage(video, 0, 0, vw, vh);
+    return true;
+  }
+
+  function measureKeys() {
+    const th = Number(rngTh.value) || 28;
+    if (!keys.length) {
+      if (midiRecording) abortMidiRecording();
+      renderOverlay();
+      return;
+    }
+    if (!captureVideoFrameBitmap()) return;
+    const thSq = th * th;
+    for (const k of keys) stateDelta[k.id] = 0;
+
+    keys.forEach((k) => {
+      const vr = keySamplingVideoRect(k);
+      const ref = getRefRgb(k.kind);
+      if (!vr) return;
+      const avg = avgRgbOfVideoRect(vr);
+      if (!avg) return;
+      const dSq = rgbDistanceSq(avg, ref);
+      stateDelta[k.id] = Math.sqrt(dSq);
+    });
+    const sig = getKeySignature();
+    if (sig !== lastKeySignature) {
+      rebuildTable(th);
+    } else {
+      updateTableCells(th, thSq);
+    }
+    processMidiRecordingFrame(thSq);
+    processMidiRealtimeFrame(thSq);
+    processMotorRealtimeFrame(thSq);
+    renderOverlay();
+  }
+
+  /** 行構成が変わらないとき DOM を作り直さず数値と ON/OFF だけ更新 */
+  function updateTableCells(th, thSq) {
+    const sorted = keys.slice().sort((a, b) => a.id - b.id);
+    if (keyRows.children.length !== sorted.length) {
+      rebuildTable(th);
+      return;
+    }
+    for (let i = 0; i < sorted.length; i++) {
+      const k = sorted[i];
+      const tr = keyRows.children[i];
+      const d = stateDelta[k.id] ?? 0;
+      const on = d * d >= thSq;
+      tr.className = on ? "active" : "inactive";
+      const dot = tr.querySelector(".status-dot");
+      if (dot) dot.className = "status-dot " + (on ? "on" : "off");
+      const tdDelta = tr.querySelector(".delta");
+      if (tdDelta) tdDelta.textContent = d.toFixed(1);
+    }
+  }
+
+  function rebuildTable(th) {
+    keyRows.innerHTML = "";
+    keys
+      .slice()
+      .sort((a, b) => a.id - b.id)
+      .forEach((k) => {
+        const d = stateDelta[k.id] ?? 0;
+        const on = d >= th;
+        const tr = document.createElement("tr");
+        tr.className = on ? "active" : "inactive";
+        tr.innerHTML = `
+          <td><span class="status-dot ${on ? "on" : "off"}"></span>#${k.id}</td>
+          <td>${k.kind === "white" ? "白鍵" : "黒鍵"}</td>
+          <td class="delta">${d.toFixed(1)}</td>
+          <td><button type="button" data-del="${k.id}">削除</button></td>
+        `;
+        tr.querySelector("button[data-del]").addEventListener("click", () => {
+          const delId = k.id;
+          if (midiC4KeyId === delId) midiC4KeyId = null;
+          keys = keys.filter((x) => x.id !== delId);
+          rebuildTable(Number(rngTh.value) || 28);
+          renderOverlay();
+        });
+        keyRows.appendChild(tr);
+      });
+    lastKeySignature = getKeySignature();
+  }
+
+  function renderOverlay() {
+    const L = videoLayout();
+    octx.clearRect(0, 0, overlay.width, overlay.height);
+    if (!L) return;
+    const th = Number(rngTh.value) || 28;
+    const noteMap = buildMidiNoteMap();
+
+    keys.forEach((k, ix) => {
+      const r = normalizedToOverlayRect(k);
+      if (!r || r.w < 2 || r.h < 2) return;
+      const d = stateDelta[k.id] ?? 0;
+      const pressed = d >= th;
+      const isWhiteKind = k.kind === "white";
+      const isC4Anchor = midiC4KeyId != null && k.id === midiC4KeyId;
+      let strokeMain = isWhiteKind
+        ? (pressed ? "rgba(255,215,132,1)" : "rgba(255,200,106,0.95)")
+        : (pressed ? "rgba(205,164,255,1)" : "rgba(170,118,255,0.95)");
+      let fillBase = pressed
+        ? (isWhiteKind ? "rgba(255,236,188,0.18)" : "rgba(146,106,218,0.22)")
+        : (isWhiteKind ? "rgba(255,226,166,0.12)" : "rgba(120,74,210,0.16)");
+      if (isC4Anchor) {
+        strokeMain = pressed
+          ? "rgba(90,255,245,1)"
+          : "rgba(40,220,255,0.98)";
+        fillBase = pressed
+          ? "rgba(64,240,255,0.26)"
+          : "rgba(32,180,220,0.2)";
+      }
+
+      octx.strokeStyle = strokeMain;
+      octx.lineWidth = isC4Anchor ? 3.2 : pressed ? 3 : activeIndex === ix ? 3 : isWhiteKind ? 2.2 : 2.4;
+      octx.fillStyle = fillBase;
+      octx.fillRect(r.x, r.y, r.w, r.h);
+
+      octx.strokeStyle = strokeMain;
+      octx.strokeRect(r.x + 0.5, r.y + 0.5, Math.max(0, r.w - 1), Math.max(0, r.h - 1));
+
+      /* 検出オンは種類ごとの枠色を維持し、鍵の内側左にミントの条だけ（枠線を緑にしないと白黒が判別しやすい） */
+      if (pressed && !isC4Anchor) {
+        const bwBar = Math.max(4, Math.min(r.w * 0.26, 9));
+        const padY = Math.min(r.h * 0.14, 7);
+        octx.fillStyle = "rgba(90,236,172,0.92)";
+        octx.fillRect(
+          r.x + 5,
+          r.y + padY,
+          bwBar,
+          Math.max(4, r.h - padY * 2),
+        );
+      }
+      if (pressed && isC4Anchor) {
+        const bwBar = Math.max(4, Math.min(r.w * 0.26, 9));
+        const padY = Math.min(r.h * 0.14, 7);
+        octx.fillStyle = "rgba(255,255,255,0.82)";
+        octx.fillRect(
+          r.x + 5,
+          r.y + padY,
+          bwBar,
+          Math.max(4, r.h - padY * 2),
+        );
+      }
+
+      octx.font = "12px system-ui,Segoe UI,sans-serif";
+      const midiN = noteMap.get(k.id);
+      const label = `#${k.id}${
+        midiN != null ? " m" + midiN : ""
+      }${isC4Anchor ? " C4" : ""}${pressed ? " ON" : ""}`;
+      octx.fillStyle = pressed
+        ? (isWhiteKind ? "#2a5a32" : "#d4fff0")
+        : (isWhiteKind ? "#ffe9b8" : "#e4d4ff");
+      if (isC4Anchor) {
+        octx.fillStyle = pressed ? "#063a3d" : "#b8f8ff";
+      }
+      octx.fillText(label, r.x + 4, r.y + Math.min(r.h - 6, 16));
+
+      /* グループ移動モードでは角だけ誤ドラッグを避けるため非表示にするが、並進ドラッグ中は点線で掴んだ鍵のみ示す（下へ） */
+      if (
+        dragKind !== "moveGroup" &&
+        (showKeyHandles || dragKind !== null || activeIndex === ix)
+      ) {
+        const hs = Math.max(12, Math.min(r.w, r.h) * 0.12);
+        octx.strokeStyle = k.kind === "white"
+          ? "rgba(255,206,132,0.85)"
+          : "rgba(200,154,255,0.88)";
+        octx.lineWidth = 1;
+        ["nw","ne","se","sw"].forEach((h) => {
+          let hx = r.x, hy = r.y;
+          if (h.includes("e")) hx = r.x + r.w - hs;
+          if (h.includes("s")) hy = r.y + r.h - hs;
+          octx.strokeRect(hx + 0.5, hy + 0.5, hs - 1, hs - 1);
+        });
+      }
+
+      /* グループ移動ドラッグ中は操作した鍵を軽く示す（角ハンドルは出さない） */
+      if (dragKind === "moveGroup" && activeIndex === ix) {
+        octx.setLineDash([5, 4]);
+        octx.strokeStyle = "rgba(230,246,255,0.75)";
+        octx.lineWidth = 1.4;
+        octx.strokeRect(
+          r.x - 2 + 0.5,
+          r.y - 2 + 0.5,
+          Math.max(0, r.w + 3),
+          Math.max(0, r.h + 3),
+        );
+        octx.setLineDash([]);
+      }
+    });
+  }
+
+  function pushKeyNormalized(nx, ny, nw, nh, kind) {
+    nw = Math.max(0.001, Math.min(1 - nx, nw));
+    nh = Math.max(0.001, Math.min(1 - ny, nh));
+    keys.push({ nx, ny, nw, nh, kind, id: nextId++ });
+  }
+
+  /** ピッチクラス 0..11 がピアノ黒鍵に相当するか（12 平均律: C#/Db, D#/Eb, F#/Gb, G#/Ab, A#/Bb） */
+  function isBlackPitchClass(pc) {
+    const mod = ((pc % 12) + 12) % 12;
+    return mod === 1 || mod === 3 || mod === 6 || mod === 8 || mod === 10;
+  }
+
+  function stripeKeys() {
+    const L = videoLayout();
+    if (!L || !video.srcObject) {
+      alert("先に画面を共有してください。");
+      return;
+    }
+    const n = Math.max(1, Math.min(120, Number(numCols.value) || 1));
+    const startSemi = Math.max(
+      0,
+      Math.min(11, Math.floor(Number(selStripeStart.value))),
+    );
+    keys = [];
+    nextId = 1;
+    midiC4KeyId = null;
+    const bandH = 0.08;
+    const nh = bandH;
+    const ny = 1 - nh;
+    const nw = 1 / n;
+    for (let i = 0; i < n; i++) {
+      const pc = (startSemi + i) % 12;
+      const kind = isBlackPitchClass(pc) ? "black" : "white";
+      pushKeyNormalized(i * nw, ny, nw, nh, kind);
+    }
+    syncKeyMidiNotesFromMap();
+    nextId = keys.length ? Math.max(...keys.map((x) => x.id)) + 1 : 1;
+    rebuildTable(Number(rngTh.value) || 28);
+    syncOverlayCursorStyle();
+    resizeOverlay();
+    syncMidiRecButtons();
+    syncPickC4Button();
+  }
+
+  overlay.addEventListener("pointerdown", (e) => {
+    const { lx, ly } = pointerOnStage(e.clientX, e.clientY);
+    const hit = hitTest(lx, ly);
+
+    if (pickC4Mode && keys.length) {
+      if (hit && (hit.type === "move" || hit.type === "resize")) {
+        applyC4Anchor(keys[hit.index]);
+        setPickC4Mode(false);
+        renderOverlay();
+      }
+      return;
+    }
+
+    if (groupMoveKeys && keys.length && hit && hit.type === "move") {
+      dragKind = "moveGroup";
+      resizeHandle = null;
+      dragRef.ix = -1;
+      dragRef.snapForGroup = keys.map((k) => ({ nx: k.nx, ny: k.ny }));
+      dragRef.startClientX = e.clientX;
+      dragRef.startClientY = e.clientY;
+      activeIndex = hit.index;
+      overlay.setPointerCapture(e.pointerId);
+      syncOverlayCursorStyle();
+      renderOverlay();
+      return;
+    }
+
+    if (hit && showKeyHandles) {
+      if (hit.type === "resize") {
+        dragKind = "resize";
+        resizeHandle = hit.handle;
+        dragRef.ix = hit.index;
+        dragRef.startClientX = e.clientX;
+        dragRef.startClientY = e.clientY;
+        const k = keys[hit.index];
+        dragRef.nx0 = k.nx;
+        dragRef.ny0 = k.ny;
+        dragRef.nw0 = k.nw;
+        dragRef.nh0 = k.nh;
+        activeIndex = hit.index;
+      } else if (hit.type === "move") {
+        dragKind = "move";
+        dragRef.ix = hit.index;
+        dragRef.startClientX = e.clientX;
+        dragRef.startClientY = e.clientY;
+        const k = keys[hit.index];
+        dragRef.nx0 = k.nx;
+        dragRef.ny0 = k.ny;
+        activeIndex = hit.index;
+      }
+      overlay.setPointerCapture(e.pointerId);
+      renderOverlay();
+    }
+  });
+
+  overlay.addEventListener("pointermove", (e) => {
+    const Lnm = stageToNormalized(e.clientX, e.clientY);
+    if (dragKind === "moveGroup" && dragRef.snapForGroup) {
+      const Lmv = videoLayout();
+      if (Lmv) {
+        const dnx = (e.clientX - dragRef.startClientX) / Lmv.rw;
+        const dny = (e.clientY - dragRef.startClientY) / Lmv.rh;
+        for (let i = 0; i < keys.length; i++) {
+          keys[i].nx = dragRef.snapForGroup[i].nx + dnx;
+          keys[i].ny = dragRef.snapForGroup[i].ny + dny;
+        }
+        renderOverlay();
+      }
+      return;
+    }
+    if ((dragKind === "move" || dragKind === "resize") && Lnm && dragRef.ix >= 0) {
+      const k = keys[dragRef.ix];
+      const L = Lnm.L;
+      const dnx = (e.clientX - dragRef.startClientX) / L.rw;
+      const dny = (e.clientY - dragRef.startClientY) / L.rh;
+      if (dragKind === "move") {
+        k.nx = dragRef.nx0 + dnx;
+        k.ny = dragRef.ny0 + dny;
+        k.nx = Math.max(0, Math.min(1 - k.nw, k.nx));
+        k.ny = Math.max(0, Math.min(1 - k.nh, k.ny));
+      } else {
+        let nx = dragRef.nx0;
+        let ny = dragRef.ny0;
+        let nw = dragRef.nw0;
+        let nh = dragRef.nh0;
+        if (resizeHandle.includes("w")) {
+          nx = dragRef.nx0 + dnx;
+          nw = dragRef.nw0 - dnx;
+        }
+        if (resizeHandle.includes("e")) nw = dragRef.nw0 + dnx;
+        if (resizeHandle.includes("n")) {
+          ny = dragRef.ny0 + dny;
+          nh = dragRef.nh0 - dny;
+        }
+        if (resizeHandle.includes("s")) nh = dragRef.nh0 + dny;
+        nw = Math.max(0.01, nw);
+        nh = Math.max(0.01, nh);
+        if (nw > 1) nw = 1;
+        if (nh > 1) nh = 1;
+        if (nx < 0) { nw += nx; nx = 0; nw = Math.max(0.01, nw); }
+        if (ny < 0) { nh += ny; ny = 0; nh = Math.max(0.01, nh); }
+        if (nx + nw > 1) nw = Math.max(0.01, 1 - nx);
+        if (ny + nh > 1) nh = Math.max(0.01, 1 - ny);
+        k.nx = nx;
+        k.ny = ny;
+        k.nw = nw;
+        k.nh = nh;
+      }
+      renderOverlay();
+    }
+  });
+
+  overlay.addEventListener("pointerup", (e) => {
+    overlay.releasePointerCapture(e.pointerId);
+
+    dragKind = null;
+    resizeHandle = null;
+    dragRef.ix = -1;
+    dragRef.snapForGroup = null;
+    syncOverlayCursorStyle();
+    renderOverlay();
+  });
+
+  overlay.addEventListener("dblclick", (e) => {
+    const { lx, ly } = pointerOnStage(e.clientX, e.clientY);
+    const hit = hitTest(lx, ly);
+    if (hit && (hit.type === "move" || hit.type === "resize")) {
+      const k = keys[hit.index];
+      k.kind = k.kind === "white" ? "black" : "white";
+      rebuildTable(Number(rngTh.value) || 28);
+      renderOverlay();
+    }
+  });
+
+  btnGroupMoveToggle.addEventListener("click", () => {
+    groupMoveKeys = !groupMoveKeys;
+    btnGroupMoveToggle.textContent = groupMoveKeys ? "グループ位置: オン" : "グループ位置: オフ";
+    syncOverlayCursorStyle();
+    renderOverlay();
+  });
+
+  btnKeyHandlesToggle.addEventListener("click", () => {
+    showKeyHandles = !showKeyHandles;
+    btnKeyHandlesToggle.textContent = showKeyHandles ? "鍵を微調整: オン" : "鍵を微調整: オフ";
+    syncOverlayCursorStyle();
+    renderOverlay();
+  });
+
+  btnClearRects.addEventListener("click", () => {
+    abortMidiRecording();
+    midiC4KeyId = null;
+    keys = [];
+    rebuildTable(Number(rngTh.value) || 28);
+    syncOverlayCursorStyle();
+    resizeOverlay();
+    syncMidiRecButtons();
+    syncPickC4Button();
+  });
+
+  btnStripe.addEventListener("click", stripeKeys);
+
+  btnMidiRecStart.addEventListener("click", startMidiRecording);
+  btnMidiRecStop.addEventListener("click", stopMidiRecordingAndExport);
+
+  btnPickC4.addEventListener("click", () => {
+    if (!keys.length) {
+      alert("鍵を生成または JSON から読み込んでから使ってください。");
+      return;
+    }
+    setPickC4Mode(!pickC4Mode);
+  });
+
+  function exportJson() {
+    syncKeyMidiNotesFromMap();
+    const data = {
+      version: 6,
+      refs: {
+        white: [Number(numWr.value), Number(numWg.value), Number(numWb.value)],
+        black: [Number(numBr.value), Number(numBg.value), Number(numBb.value)],
+      },
+      threshold: Number(rngTh.value) || 28,
+      keys: keys.map(({ nx, ny, nw, nh, kind, id, midiNote }) => {
+        const o = { nx, ny, nw, nh, kind, id };
+        if (midiNote != null && Number.isFinite(midiNote))
+          o.midiNote = clampMidi(midiNote);
+        return o;
+      }),
+      stripeForm: {
+        startSemi: Math.max(
+          0,
+          Math.min(11, Math.floor(Number(selStripeStart.value))),
+        ),
+        numCols: Math.max(1, Math.min(120, Number(numCols.value) || 14)),
+      },
+    };
+    if (midiC4KeyId != null) data.midiC4KeyId = midiC4KeyId;
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "keyboard_map.json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+  btnExport.addEventListener("click", exportJson);
+
+  btnMidiConnect.addEventListener("click", async () => {
+    if (realtimeMidiEnabled) {
+      disconnectMidiDevice();
+    } else {
+      const success = await initWebMidi();
+      if (success) {
+        btnMidiConnect.textContent = "MIDI 切断";
+      }
+    }
+  });
+
+  btnArduinoConnect.addEventListener("click", () => { void connectSerial(); });
+  btnArduinoDisconnect.addEventListener("click", () => { void disconnectSerial(); });
+  btnArduinoReset.addEventListener("click", () => { void resetArduino(); });
+
+  if (!navigator.serial) {
+    updateStatusSerial("error", "Web Serial API 未サポート（Chrome / Edge 推奨）");
+  }
+
+  fileImport.addEventListener("change", async (ev) => {
+    const f = ev.target.files && ev.target.files[0];
+    if (!f) return;
+    const text = await f.text();
+    try {
+      const data = JSON.parse(text);
+      const v = data.version;
+      if (v !== 1 && v !== 2 && v !== 3 && v !== 4 && v !== 5 && v !== 6) throw new Error("version");
+
+      if (data.stripeForm && typeof data.stripeForm === "object") {
+        const sf = data.stripeForm;
+        if (typeof sf.startSemi === "number" && Number.isFinite(sf.startSemi)) {
+          selStripeStart.value = String(Math.max(0, Math.min(11, Math.floor(sf.startSemi))));
+        }
+        if (typeof sf.numCols === "number" && Number.isFinite(sf.numCols)) {
+          numCols.value = String(Math.max(1, Math.min(120, Math.floor(sf.numCols))));
+        }
+      }
+
+      keys = (data.keys || []).map((k) => {
+        const key = {
+          nx: k.nx,
+          ny: k.ny,
+          nw: k.nw,
+          nh: k.nh,
+          kind: k.kind === "black" ? "black" : "white",
+          id: k.id ?? nextId++,
+        };
+        if (typeof k.midiNote === "number" && Number.isFinite(k.midiNote))
+          key.midiNote = clampMidi(k.midiNote);
+        return key;
+      });
+
+      nextId = keys.length ? Math.max(...keys.map((x) => x.id)) + 1 : 1;
+
+      midiC4KeyId = null;
+      if (typeof data.midiC4KeyId === "number" && Number.isFinite(data.midiC4KeyId)) {
+        const cid = Math.round(data.midiC4KeyId);
+        if (keys.some((x) => x.id === cid)) midiC4KeyId = cid;
+      }
+
+      if (data.threshold != null) {
+        rngTh.value = String(data.threshold);
+        lblTh.textContent = String(data.threshold);
+      }
+      const rw = data.refs && data.refs.white;
+      const rb = data.refs && data.refs.black;
+      if (rw && rw.length === 3) {
+        numWr.value = rw[0]; numWg.value = rw[1]; numWb.value = rw[2];
+        colWhite.value = rgbToHex(Number(rw[0]), Number(rw[1]), Number(rw[2]));
+      }
+      if (rb && rb.length === 3) {
+        numBr.value = rb[0]; numBg.value = rb[1]; numBb.value = rb[2];
+        colBlack.value = rgbToHex(Number(rb[0]), Number(rb[1]), Number(rb[2]));
+      }
+      rebuildTable(Number(rngTh.value) || 28);
+      syncKeyMidiNotesFromMap();
+      syncOverlayCursorStyle();
+      resizeOverlay();
+      syncMidiRecButtons();
+      syncPickC4Button();
+    } catch {
+      alert("JSON の読み込みに失敗しました（version 1〜6 形式のみ対応）。");
+    }
+    ev.target.value = "";
+  });
+
+  async function startShare() {
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          frameRate: { ideal: 60, max: 60 },
+        },
+        audio: false,
+      });
+      video.srcObject = stream;
+      await video.play();
+      btnShare.disabled = true;
+      btnStop.disabled = false;
+      resizeOverlay();
+      stream.getVideoTracks()[0].addEventListener("ended", () => stopShare());
+      loop();
+      syncMidiRecButtons();
+      syncPickC4Button();
+    } catch (err) {
+      alert("共有を開始できませんでした（キャンセルまたは未対応）。\n" + (err && err.message ? err.message : ""));
+      console.error(err);
+    }
+  }
+
+  function stopShare() {
+    abortMidiRecording();
+    disconnectMidiDevice();
+    void disconnectSerial();
+    cancelMeasureLoop();
+    dragKind = null;
+    resizeHandle = null;
+    dragRef.ix = -1;
+    dragRef.snapForGroup = null;
+    if (stream) {
+      stream.getTracks().forEach((t) => t.stop());
+      stream = null;
+    }
+    video.srcObject = null;
+    btnShare.disabled = false;
+    btnStop.disabled = true;
+    syncOverlayCursorStyle();
+    resizeOverlay();
+  }
+
+  btnShare.addEventListener("click", startShare);
+  btnStop.addEventListener("click", stopShare);
+
+  window.addEventListener("resize", () => resizeOverlay());
+  video.addEventListener("loadedmetadata", () => resizeOverlay());
+
+  let stageResizeQueued = false;
+  function scheduleStageResizeOverlay() {
+    if (stageResizeQueued) return;
+    stageResizeQueued = true;
+    requestAnimationFrame(() => {
+      stageResizeQueued = false;
+      resizeOverlay();
+    });
+  }
+  if (typeof ResizeObserver !== "undefined") {
+    new ResizeObserver(() => scheduleStageResizeOverlay()).observe(stage);
+  }
+
+  let raf = 0;
+  let vfcHandle = 0;
+
+  function cancelMeasureLoop() {
+    cancelAnimationFrame(raf);
+    raf = 0;
+    if (vfcHandle && typeof video.cancelVideoFrameCallback === "function") {
+      video.cancelVideoFrameCallback(vfcHandle);
+    }
+    vfcHandle = 0;
+  }
+
+  function loop() {
+    cancelMeasureLoop();
+    function tickRaf() {
+      if (!video.srcObject) return;
+      measureKeys();
+      raf = requestAnimationFrame(tickRaf);
+    }
+    function tickVfc() {
+      if (!video.srcObject) return;
+      measureKeys();
+      vfcHandle = video.requestVideoFrameCallback(tickVfc);
+    }
+    if (typeof video.requestVideoFrameCallback === "function") {
+      vfcHandle = video.requestVideoFrameCallback(tickVfc);
+    } else {
+      raf = requestAnimationFrame(tickRaf);
+    }
+  }
+
+  /** 初期空白の表 */
+  rebuildTable(Number(rngTh.value) || 28);
+  resizeOverlay();
+  syncOverlayCursorStyle();
+  syncMidiRecButtons();
+  syncPickC4Button();
+})();
+  </script>
+</body>
+</html>
