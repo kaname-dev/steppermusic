@@ -263,7 +263,7 @@
     <aside>
       <h2>既定色・検出</h2>
       <fieldset>
-        <legend>標準 RGB（離れた色を「押された」とみなす）</legend>
+        <legend>標準 RGB</legend>
         <div class="row">
           <span class="small">白鍵</span>
           <input type="color" id="colWhite" value="#eae8dc" />
@@ -286,15 +286,12 @@
         <div class="row">
           <button type="button" id="btnSampleDefaults">現在フレームで標準色を自動取得</button>
         </div>
-        <div class="row small">
-          （各鍵の矩形の内側をサンプルし、白鍵／黒鍵ごとに平均色を求めて標準色に反映します。鍵が無いときは現在の入力値が使われます。）
-        </div>
       </fieldset>
       <fieldset>
-        <legend>クイック一列分割</legend>
+        <legend>鍵盤範囲から自動配置</legend>
         <div class="row">
           <label class="small" for="selStripeStart">左端の音（半音）</label>
-          <select id="selStripeStart" title="左から何半音目かに相当。C=ド、以降半音ずつ">
+          <select id="selStripeStart">
             <option value="0" selected>C（ド）</option>
             <option value="1">C#（ド#）</option>
             <option value="2">D（レ）</option>
@@ -310,12 +307,10 @@
           </select>
         </div>
         <div class="row">
-          <label class="small" for="numCols">鍵の数</label>
-          <input type="number" id="numCols" min="1" max="120" value="14" style="width:64px;" />
-          <button type="button" id="btnStripe">画面下部帯から均等生成</button>
+          <button type="button" id="btnRangeDraw">鍵盤範囲を指定: オフ</button>
+          <button type="button" id="btnPickC4" disabled>C4を指定</button>
         </div>
-        <div class="row small">動画の下端から高さ 8% の帯を横に等分し、左端を基準に<strong>12平均律</strong>（C#/D#/F#/G#/A# に相当する半音が黒鍵）で白／黒を振り分けます。</div>
-        <div class="row small">帯生成のあと、まず<strong>グループ位置</strong>で全体をドラッグ合わせ、必要なら「鍵を微調整」で各鍵の移動・角リサイズ・ダブルクリックでの白／黒切替を行ってください。</div>
+        <div class="row small" id="lblRangeResult">未認識</div>
       </fieldset>
       <fieldset>
         <legend>モーター演奏（Arduino）</legend>
@@ -331,7 +326,6 @@
             ポリフォニー（2 音同時まで）
           </label>
         </div>
-        <div class="row small">画面共有で検出した鍵の ON/OFF をリアルタイムで Arduino へ送り、ステッピングモーターで演奏します（115200 baud）。</div>
         <div class="row">
           <span class="small">アクティブノート</span>
         </div>
@@ -341,17 +335,13 @@
         <legend>MIDI 収録</legend>
         <div class="row">
           <label class="small" for="numRecPlaybackSpeed">収録時の動画速度</label>
-          <input type="number" id="numRecPlaybackSpeed" min="0.05" max="1" step="0.05" value="1" style="width:72px;" title="動画を低倍速で見ながら収録するときの倍率（1=等速、0.5=半分の速度）。保存時に MIDI の時刻を通常速度へ補正します。" />
-          <span class="small">（1=等速、0.5=半分の速度で見たときは 0.5）</span>
+          <input type="number" id="numRecPlaybackSpeed" min="0.05" max="1" step="0.05" value="1" style="width:72px;" />
         </div>
         <div class="row">
-          <button type="button" id="btnPickC4" disabled>C4を指定</button>
           <button type="button" id="btnMidiRecStart" disabled>収録開始</button>
           <button type="button" id="btnMidiRecStop" disabled>収録停止と MIDI 保存</button>
         </div>
-        <div class="row small" id="lblMidiRec">
-          「C4を指定」→ 鍵クリックでその鍵が水色で強調され C4（m60）。左の鍵は 60 未満も含め半音ずつ下がります。MIDI 収録は常にこの並びと一致。未指定時は画面上の左→右＋「左端の音」で自動。テンポ 120 BPM 固定。
-        </div>
+        <div class="row small" id="lblMidiRec" hidden></div>
       </fieldset>
       <h2>検出状態</h2>
       <div class="keys-list">
@@ -405,8 +395,8 @@
   const lblTh = document.getElementById("lblTh");
   const btnSampleDefaults = document.getElementById("btnSampleDefaults");
   const selStripeStart = document.getElementById("selStripeStart");
-  const numCols = document.getElementById("numCols");
-  const btnStripe = document.getElementById("btnStripe");
+  const btnRangeDraw = document.getElementById("btnRangeDraw");
+  const lblRangeResult = document.getElementById("lblRangeResult");
   const keyRows = document.getElementById("keyRows");
   const btnPickC4 = document.getElementById("btnPickC4");
   const btnMidiRecStart = document.getElementById("btnMidiRecStart");
@@ -454,7 +444,13 @@
   let pickC4Mode = false;
   /** ユーザーが指定した C4 対応鍵の id。buildMidiNoteMap がこれを 60、左へ半音ずつ減算して記録する */
   let midiC4KeyId = null;
-  let dragKind = null; // null | move | resize | moveGroup
+  let dragKind = null; // null | move | resize | moveGroup | range
+  /** 鍵盤の高さ範囲をドラッグして白鍵・黒鍵を自動配置するモード */
+  let rangeDrawMode = false;
+  /** @type {{ nx: number; ny: number; nw: number; nh: number } | null} */
+  let rangeDraft = null;
+  /** 範囲ドラッグ直後の dblclick で白黒が切り替わらないようにする */
+  let ignoreNextDblClick = false;
   let resizeHandle = null; // nw,ne,se,sw
   /** @type {{ nx: number; ny: number; nw: number; nh: number; kind: 'white'|'black'; id: number; midiNote?: number }[]} */
   let keys = [];
@@ -470,7 +466,7 @@
   };
 
   function syncOverlayCursorStyle() {
-    if (pickC4Mode) {
+    if (rangeDrawMode || dragKind === "range" || pickC4Mode) {
       overlay.style.cursor = "crosshair";
       return;
     }
@@ -530,6 +526,27 @@
     const nx = (lx - L.ox) / L.rw;
     const ny = (ly - L.oy) / L.rh;
     return { nx, ny, L };
+  }
+
+  /** 範囲ドラッグ用。映像の外でも端に吸着する */
+  function clientToNormalizedClamped(clientX, clientY) {
+    const L = videoLayout();
+    if (!L) return null;
+    const { lx, ly } = pointerOnStage(clientX, clientY);
+    const nx = Math.max(0, Math.min(1, (lx - L.ox) / L.rw));
+    const ny = Math.max(0, Math.min(1, (ly - L.oy) / L.rh));
+    return { nx, ny };
+  }
+
+  function rectFromPoints(x0, y0, x1, y1) {
+    const nx = Math.min(x0, x1);
+    const ny = Math.min(y0, y1);
+    return {
+      nx,
+      ny,
+      nw: Math.abs(x1 - x0),
+      nh: Math.abs(y1 - y0),
+    };
   }
 
   function normalizedToOverlayRect(key) {
@@ -641,9 +658,6 @@
     return Math.max(0, Math.min(127, Math.round(Number(n) || 0)));
   }
 
-  const MIDI_REC_LBL_IDLE =
-    "「C4を指定」→ 鍵クリックでその鍵が水色で強調され C4（m60）。左の鍵は 60 未満も含め半音ずつ下がります。MIDI 収録は常にこの並びと一致。未指定時は画面上の左→右＋「左端の音」で自動。テンポ 120 BPM 固定。低倍速で動画を見ながら収録するときは「収録時の動画速度」にその倍率（例: 0.5）を入れると、保存される MIDI は通常速度のタイミングに補正されます。";
-
   /** 収録対象動画の再生倍率（等速=1、半分の速度=0.5）。MIDI 書き出し時に wall-clock をこれで縮めて通常テンポ相当にする */
   function getMidiRecordingPlaybackFactor() {
     const raw = Number(numRecPlaybackSpeed.value);
@@ -652,15 +666,47 @@
   }
 
   /**
-   * MIDI 割当・C4 指定で共通。上から下、同じ行付近なら左から右（矩形中心で比較）。
-   * @returns {{ nx: number; ny: number; nw: number; nh: number; kind: 'white'|'black'; id: number; midiNote?: number }[]}
+   * MIDI 割当・C4 指定で共通。縦に重なる白鍵と黒鍵は同じ段として左から右。
+   * 段が離れていれば上の段から。
+   * @param {{ nx: number; ny: number; nw: number; nh: number }[]} list
    */
+  function sortKeyList(list) {
+    const pending = list.slice().sort(
+      (a, b) => (a.ny + a.nh / 2) - (b.ny + b.nh / 2),
+    );
+    const rows = [];
+    for (const k of pending) {
+      const cy = k.ny + k.nh / 2;
+      let best = null;
+      let bestDist = Infinity;
+      for (const row of rows) {
+        const dist = Math.abs(cy - row.cy);
+        const limit = Math.max(k.nh, row.span) * 0.8;
+        if (dist <= limit && dist < bestDist) {
+          best = row;
+          bestDist = dist;
+        }
+      }
+      if (!best) {
+        rows.push({ cy, span: k.nh, keys: [k] });
+      } else {
+        best.keys.push(k);
+        const n = best.keys.length;
+        best.cy = (best.cy * (n - 1) + cy) / n;
+        best.span = Math.max(best.span, k.nh);
+      }
+    }
+    rows.sort((a, b) => a.cy - b.cy);
+    const out = [];
+    for (const row of rows) {
+      row.keys.sort((a, b) => (a.nx + a.nw / 2) - (b.nx + b.nw / 2));
+      out.push(...row.keys);
+    }
+    return out;
+  }
+
   function sortKeysSpatially() {
-    return keys.slice().sort((a, b) => {
-      const cy = a.ny + a.nh / 2 - (b.ny + b.nh / 2);
-      if (Math.abs(cy) > 1e-5) return cy;
-      return a.nx + a.nw / 2 - (b.nx + b.nw / 2);
-    });
+    return sortKeyList(keys);
   }
 
   /** クリックした鍵を C4 アンカーにし、sortKeysSpatially 順で 60 + (i - j)。低い鍵は 60 未満もそのまま clamp。 */
@@ -708,10 +754,16 @@
 
   function setPickC4Mode(on) {
     pickC4Mode = on;
+    if (on && rangeDrawMode) {
+      rangeDrawMode = false;
+      rangeDraft = null;
+      btnRangeDraw.textContent = "鍵盤範囲を指定: オフ";
+    }
     btnPickC4.textContent = on ? "C4指定をやめる" : "C4を指定";
-    lblMidiRec.textContent = on
-      ? "C4 指定モード: 鍵の上をクリックしてください（キャンセルは「C4指定をやめる」）。"
-      : MIDI_REC_LBL_IDLE;
+    if (!midiRecording) {
+      lblMidiRec.textContent = "";
+      lblMidiRec.hidden = true;
+    }
     syncOverlayCursorStyle();
   }
 
@@ -736,9 +788,8 @@
     midiRecording = false;
     midiRecEvents = [];
     midiRecPrevOn = new Map();
-    lblMidiRec.textContent = pickC4Mode
-      ? "C4 指定モード: 鍵の上をクリックしてください（キャンセルは「C4指定をやめる」）。"
-      : MIDI_REC_LBL_IDLE;
+    lblMidiRec.textContent = "";
+    lblMidiRec.hidden = true;
     syncMidiRecButtons();
   }
 
@@ -753,7 +804,8 @@
     midiRecEvents = [];
     midiRecPrevOn = new Map();
     midiRecT0 = performance.now();
-    lblMidiRec.textContent = "● 収録中…（停止で MIDI ファイルを保存）";
+    lblMidiRec.textContent = "収録中";
+    lblMidiRec.hidden = false;
     syncMidiRecButtons();
   }
 
@@ -831,9 +883,8 @@
     midiRecEvents = [];
     midiRecording = false;
     midiRecPrevOn = new Map();
-    lblMidiRec.textContent = pickC4Mode
-      ? "C4 指定モード: 鍵の上をクリックしてください（キャンセルは「C4指定をやめる」）。"
-      : MIDI_REC_LBL_IDLE;
+    lblMidiRec.textContent = "";
+    lblMidiRec.hidden = true;
     syncMidiRecButtons();
     const hasNoteOn = events.some((e) => (e.b0 & 0xf0) === 0x90);
     if (!hasNoteOn) {
@@ -1526,6 +1577,24 @@
         octx.setLineDash([]);
       }
     });
+
+    if (rangeDraft && rangeDraft.nw > 0.002 && rangeDraft.nh > 0.002) {
+      const r = normalizedToOverlayRect(rangeDraft);
+      if (r) {
+        octx.save();
+        octx.setLineDash([7, 5]);
+        octx.strokeStyle = "rgba(80, 230, 255, 0.95)";
+        octx.lineWidth = 2;
+        octx.fillStyle = "rgba(80, 230, 255, 0.12)";
+        octx.fillRect(r.x, r.y, r.w, r.h);
+        octx.strokeRect(r.x + 0.5, r.y + 0.5, Math.max(0, r.w - 1), Math.max(0, r.h - 1));
+        octx.setLineDash([]);
+        octx.font = "12px system-ui,Segoe UI,sans-serif";
+        octx.fillStyle = "#d9fbff";
+        octx.fillText("鍵盤範囲", r.x + 6, Math.min(r.y + r.h - 6, r.y + 16));
+        octx.restore();
+      }
+    }
   }
 
   function pushKeyNormalized(nx, ny, nw, nh, kind) {
@@ -1534,37 +1603,819 @@
     keys.push({ nx, ny, nw, nh, kind, id: nextId++ });
   }
 
-  /** ピッチクラス 0..11 がピアノ黒鍵に相当するか（12 平均律: C#/Db, D#/Eb, F#/Gb, G#/Ab, A#/Bb） */
-  function isBlackPitchClass(pc) {
-    const mod = ((pc % 12) + 12) % 12;
-    return mod === 1 || mod === 3 || mod === 6 || mod === 8 || mod === 10;
+  function percentile(values, p) {
+    const a = Array.from(values).sort((x, y) => x - y);
+    if (!a.length) return 0;
+    const i = (a.length - 1) * (p / 100);
+    const lo = Math.floor(i);
+    const hi = Math.min(a.length - 1, lo + 1);
+    const t = i - lo;
+    return a[lo] * (1 - t) + a[hi] * t;
   }
 
-  function stripeKeys() {
-    const L = videoLayout();
-    if (!L || !video.srcObject) {
+  function medianNum(values) {
+    const a = Array.from(values).sort((x, y) => x - y);
+    if (!a.length) return 0;
+    const m = a.length >> 1;
+    return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+  }
+
+  function smoothArray(src, rad) {
+    const n = src.length;
+    const out = new Float32Array(n);
+    const r = Math.max(0, rad | 0);
+    const ps = new Float64Array(n + 1);
+    for (let i = 0; i < n; i++) ps[i + 1] = ps[i] + src[i];
+    for (let i = 0; i < n; i++) {
+      const a = Math.max(0, i - r);
+      const b = Math.min(n - 1, i + r);
+      out[i] = (ps[b + 1] - ps[a]) / (b - a + 1);
+    }
+    return out;
+  }
+
+  function otsuFloat(values) {
+    let min = Infinity;
+    let max = -Infinity;
+    for (let i = 0; i < values.length; i++) {
+      const v = values[i];
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+    if (!(max > min)) return min;
+    const hist = new Float64Array(256);
+    const scale = 255 / (max - min);
+    for (let i = 0; i < values.length; i++) {
+      const b = Math.max(0, Math.min(255, Math.round((values[i] - min) * scale)));
+      hist[b]++;
+    }
+    const total = values.length;
+    let sum = 0;
+    for (let i = 0; i < 256; i++) sum += i * hist[i];
+    let sumB = 0;
+    let wB = 0;
+    let best = -1;
+    let threshold = 128;
+    for (let t = 0; t < 256; t++) {
+      wB += hist[t];
+      if (!wB) continue;
+      const wF = total - wB;
+      if (!wF) break;
+      sumB += t * hist[t];
+      const mB = sumB / wB;
+      const mF = (sum - sumB) / wF;
+      const between = wB * wF * (mB - mF) * (mB - mF);
+      if (between > best) {
+        best = between;
+        threshold = t;
+      }
+    }
+    return min + threshold / scale;
+  }
+
+  function maskRuns(mask) {
+    const runs = [];
+    let s = -1;
+    for (let x = 0; x <= mask.length; x++) {
+      const on = x < mask.length && mask[x];
+      if (on && s < 0) s = x;
+      if (!on && s >= 0) {
+        runs.push([s, x]);
+        s = -1;
+      }
+    }
+    return runs;
+  }
+
+  function mergeCloseRuns(runs, gapMax) {
+    if (!runs.length) return [];
+    const out = [[runs[0][0], runs[0][1]]];
+    for (let i = 1; i < runs.length; i++) {
+      const prev = out[out.length - 1];
+      if (runs[i][0] - prev[1] <= gapMax) prev[1] = runs[i][1];
+      else out.push([runs[i][0], runs[i][1]]);
+    }
+    return out;
+  }
+
+  function columnMean(luma, w, h, y0, y1) {
+    const a = Math.max(0, Math.min(h - 1, Math.floor(y0)));
+    const b = Math.max(a + 1, Math.min(h, Math.ceil(y1)));
+    const out = new Float32Array(w);
+    const rows = b - a;
+    for (let y = a; y < b; y++) {
+      const row = y * w;
+      for (let x = 0; x < w; x++) out[x] += luma[row + x];
+    }
+    for (let x = 0; x < w; x++) out[x] /= rows;
+    return out;
+  }
+
+  function lumaFromImage(img) {
+    const w = img.width;
+    const h = img.height;
+    const luma = new Float32Array(w * h);
+    const d = img.data;
+    for (let p = 0, i = 0; p < luma.length; p++, i += 4) {
+      luma[p] = d[i] * 0.2126 + d[i + 1] * 0.7152 + d[i + 2] * 0.0722;
+    }
+    return { w, h, luma };
+  }
+
+  /** 細い暗線だけを白鍵の隙間として残す。幅の広い暗い帯（押鍵など）は捨てる */
+  function selectGapRuns(darkRuns) {
+    if (!darkRuns.length) return [];
+    const widths = darkRuns.map(([a, b]) => b - a).sort((a, b) => a - b);
+    const med = widths[widths.length >> 1];
+    const maxW = Math.max(med * 3, 2);
+    return darkRuns.filter(([a, b]) => (b - a) <= maxW);
+  }
+
+  function segmentsFromGaps(width, gaps) {
+    const cuts = [0];
+    for (const [a, b] of gaps) cuts.push((a + b) / 2);
+    cuts.push(width);
+    const segs = [];
+    for (let i = 0; i < cuts.length - 1; i++) {
+      const s = cuts[i];
+      const e = cuts[i + 1];
+      if (e - s >= 2) segs.push([s, e]);
+    }
+    return segs;
+  }
+
+  function dropThinSegments(segs) {
+    if (segs.length < 2) return segs;
+    const med = medianNum(segs.map((s) => s[1] - s[0]));
+    return segs.filter((s) => (s[1] - s[0]) >= med * 0.45);
+  }
+
+  function segmentsUniform(segs) {
+    if (!segs || segs.length < 3) return false;
+    const widths = segs.map((s) => s[1] - s[0]);
+    const m = medianNum(widths);
+    if (m <= 0) return false;
+    let acc = 0;
+    for (const w of widths) acc += Math.abs(w - m);
+    return acc / widths.length / m < 0.28;
+  }
+
+  function findWhiteByGaps(profile) {
+    const p70 = percentile(profile, 70);
+    const p10 = percentile(profile, 10);
+    const gapCut = p70 - Math.max(16, (p70 - p10) * 0.35);
+    const dark = new Uint8Array(profile.length);
+    for (let x = 0; x < profile.length; x++) {
+      if (profile[x] < gapCut) dark[x] = 1;
+    }
+    const gaps = selectGapRuns(maskRuns(dark));
+    if (gaps.length < 2) return null;
+    return dropThinSegments(segmentsFromGaps(profile.length, gaps));
+  }
+
+  function estimateWhiteWidth(blacks, imgW) {
+    if (blacks.length >= 2) {
+      const centers = blacks.map((b) => (b[0] + b[1]) / 2).sort((a, b) => a - b);
+      const diffs = [];
+      for (let i = 1; i < centers.length; i++) diffs.push(centers[i] - centers[i - 1]);
+      diffs.sort((a, b) => a - b);
+      const half = diffs.slice(0, Math.ceil(diffs.length / 2));
+      const medSmall = medianNum(half);
+      const medAll = medianNum(diffs);
+      const wEst = medAll > medSmall * 1.45 ? medSmall : medAll;
+      if (wEst >= 4 && wEst <= imgW * 0.8 && imgW / wEst <= 80) return wEst;
+      return null;
+    }
+    if (blacks.length === 1) {
+      const bw = blacks[0][1] - blacks[0][0];
+      const wEst = bw / 0.58;
+      if (wEst >= 4 && wEst <= imgW * 0.8 && imgW / wEst <= 80) return wEst;
+    }
+    return null;
+  }
+
+  /** 白鍵中心が上側の帯で明るくなる位相を選ぶ */
+  function bestWhitePhase(W, upperProfile, imgW) {
+    const step = Math.max(1, Math.round(W / 24));
+    let bestP = 0;
+    let bestScore = -Infinity;
+    for (let p = 0; p < W; p += step) {
+      let score = 0;
+      let n = 0;
+      for (let x = p + W * 0.5; x < imgW; x += W) {
+        const i = Math.max(0, Math.min(upperProfile.length - 1, Math.round(x)));
+        score += upperProfile[i];
+        n++;
+      }
+      if (n && score / n > bestScore) {
+        bestScore = score / n;
+        bestP = p;
+      }
+    }
+    return bestP;
+  }
+
+  function whitesFromBlackGrid(blacks, upperProfile, imgW) {
+    const W = estimateWhiteWidth(blacks, imgW);
+    if (!W) return null;
+    const phase = bestWhitePhase(W, upperProfile, imgW);
+    const segs = [];
+    for (let i = -1; i < imgW / W + 2; i++) {
+      const a = phase + i * W;
+      const b = a + W;
+      const c0 = Math.max(0, a);
+      const c1 = Math.min(imgW, b);
+      if (c1 - c0 >= W * 0.45) segs.push([c0, c1]);
+    }
+    return segs.length >= 3 ? segs : null;
+  }
+
+  function chooseWhiteSegments(gapSegs, gridSegs) {
+    const gapOk = segmentsUniform(gapSegs);
+    const gridOk = gridSegs && gridSegs.length >= 3;
+    if (gapOk && gridOk) {
+      const rel = Math.abs(gapSegs.length - gridSegs.length) / gridSegs.length;
+      return rel <= 0.25 ? gapSegs : gridSegs;
+    }
+    if (gapOk) return gapSegs;
+    if (gridOk) return gridSegs;
+    if (gapSegs && gapSegs.length >= 3) return gapSegs;
+    return null;
+  }
+
+  function blackHeightRatio(luma, w, h, x0, x1) {
+    const xa = Math.max(0, Math.floor(x0 + (x1 - x0) * 0.25));
+    const xb = Math.min(w, Math.ceil(x0 + (x1 - x0) * 0.75));
+    const span = Math.max(1, xb - xa);
+    const rows = new Float32Array(h);
+    for (let y = 0; y < h; y++) {
+      let s = 0;
+      const row = y * w;
+      for (let x = xa; x < xb; x++) s += luma[row + x];
+      rows[y] = s / span;
+    }
+    const topN = Math.max(1, Math.floor(h * 0.2));
+    const botN = Math.max(1, Math.floor(h * 0.78));
+    const top = medianNum(rows.subarray(0, topN));
+    const bot = medianNum(rows.subarray(botN));
+    if (bot - top < 15) return 0.62;
+    const mid = (top + bot) / 2;
+    let end = Math.floor(h * 0.5);
+    let seenDark = false;
+    for (let y = 0; y < h * 0.92; y++) {
+      if (rows[y] < mid) {
+        seenDark = true;
+        end = y;
+      } else if (seenDark && y > h * 0.25) {
+        let bright = 0;
+        for (let k = 0; k < 3 && y + k < h; k++) {
+          if (rows[y + k] >= mid) bright++;
+        }
+        if (bright >= 3) break;
+      }
+    }
+    return Math.max(0.4, Math.min(0.8, (end + 1) / h));
+  }
+
+  function findBlackRuns(delta) {
+    const p90 = percentile(delta, 90);
+    const p40 = percentile(delta, 40);
+    const spread = p90 - p40;
+    const fracCut = p40 + spread * 0.42;
+    let n = 0;
+    for (let i = 0; i < delta.length; i++) if (delta[i] >= fracCut) n++;
+    const frac = n / delta.length;
+    const realistic = spread >= 14 && frac >= 0.06 && frac <= 0.72;
+    if (!realistic) return { realistic: false, runs: [] };
+    const mask = new Uint8Array(delta.length);
+    for (let i = 0; i < delta.length; i++) {
+      if (delta[i] >= fracCut) mask[i] = 1;
+    }
+    const minRun = Math.max(2, Math.round(delta.length / 200));
+    const fillGap = Math.max(2, Math.round(delta.length / 200));
+    let runs = maskRuns(mask).filter(([a, b]) => b - a >= minRun);
+    runs = mergeCloseRuns(runs, fillGap);
+    return { realistic: true, runs };
+  }
+
+  function filterBlackRuns(runs, whiteWidth) {
+    if (!runs.length) return [];
+    const widths = runs.map(([a, b]) => b - a);
+    const med = medianNum(widths);
+    return runs.filter(([a, b]) => {
+      const bw = b - a;
+      if (whiteWidth) return bw >= whiteWidth * 0.22 && bw <= whiteWidth * 1.05;
+      return bw >= med * 0.45 && bw <= med * 2.2;
+    });
+  }
+
+  function absorbTinyClassRuns(runs) {
+    if (runs.length < 3) return runs;
+    const med = medianNum(runs.map((r) => r.b - r.a));
+    const minW = med * 0.4;
+    const out = [];
+    for (const r of runs) {
+      if ((r.b - r.a) < minW && out.length) out[out.length - 1].b = r.b;
+      else out.push({ a: r.a, b: r.b, kind: r.kind });
+    }
+    const merged = [];
+    for (const r of out) {
+      const prev = merged[merged.length - 1];
+      if (prev && prev.kind === r.kind) prev.b = r.b;
+      else merged.push({ a: r.a, b: r.b, kind: r.kind });
+    }
+    return merged.filter((r) => (r.b - r.a) >= minW * 0.5);
+  }
+
+  /** 平坦な半音列では E-F と B-C が同じ白のまま隣り合う。黒鍵幅の整数倍なら分割する */
+  function splitWideWhiteRuns(runs) {
+    const blacks = runs.filter((r) => r.kind === "black");
+    if (!blacks.length) return runs;
+    const bw = medianNum(blacks.map((r) => r.b - r.a));
+    if (!(bw > 1)) return runs;
+    const out = [];
+    for (const r of runs) {
+      if (r.kind === "black") {
+        out.push(r);
+        continue;
+      }
+      const w = r.b - r.a;
+      const n = Math.max(1, Math.round(w / bw));
+      if (n >= 2 && Math.abs(w - n * bw) <= bw * 0.35) {
+        const step = w / n;
+        for (let i = 0; i < n; i++) {
+          out.push({ a: r.a + i * step, b: r.a + (i + 1) * step, kind: "white" });
+        }
+      } else {
+        out.push(r);
+      }
+    }
+    return out;
+  }
+
+  function segmentFlatKeys(profile) {
+    const hi = percentile(profile, 80);
+    const lo = percentile(profile, 20);
+    if (hi - lo < 20) return null;
+    const cut = otsuFloat(profile);
+    const runs = [];
+    let s = 0;
+    let black = profile[0] < cut;
+    for (let x = 1; x <= profile.length; x++) {
+      const isBlack = x < profile.length && profile[x] < cut;
+      if (x === profile.length || isBlack !== black) {
+        runs.push({ a: s, b: x, kind: black ? "black" : "white" });
+        s = x;
+        black = isBlack;
+      }
+    }
+    const cleaned = splitWideWhiteRuns(absorbTinyClassRuns(runs));
+    if (cleaned.length < 3) return null;
+    return cleaned;
+  }
+
+  function mapPixelSeg(seg, rect, imgW, imgH, kind, y0, y1) {
+    return {
+      nx: rect.nx + (seg[0] / imgW) * rect.nw,
+      nw: ((seg[1] - seg[0]) / imgW) * rect.nw,
+      ny: rect.ny + (y0 / imgH) * rect.nh,
+      nh: ((y1 - y0) / imgH) * rect.nh,
+      kind,
+    };
+  }
+
+  const PIANO_DETECT_FAIL =
+    "白鍵と黒鍵の境界を読み取れませんでした。黒鍵の上端から白鍵の下端まで、鍵盤全体を囲むように置き直してください。";
+
+  /** 黒鍵はド#・レ# の2個と、ファ#・ソ#・ラ# の3個が交互に並ぶ。C# からの白鍵幅単位 */
+  const BLACK_SLOT_POS = [0, 1, 3, 4, 5];
+
+  function isBlackPitch(pc) {
+    const m = ((pc % 12) + 12) % 12;
+    return m === 1 || m === 3 || m === 6 || m === 8 || m === 10;
+  }
+
+  function sampleProfile(profile, x) {
+    const i = Math.max(0, Math.min(profile.length - 1, Math.round(x)));
+    return profile[i];
+  }
+
+  function segMeanProfile(profile, a, b) {
+    const i0 = Math.max(0, Math.floor(a));
+    const i1 = Math.min(profile.length, Math.ceil(b));
+    if (i1 <= i0) return 0;
+    let s = 0;
+    for (let i = i0; i < i1; i++) s += profile[i];
+    return s / (i1 - i0);
+  }
+
+  function predictBlackCenters(origin, W, imgW) {
+    const xs = [];
+    if (!(W > 1)) return xs;
+    const minX = -0.25 * W;
+    const maxX = imgW + 0.25 * W;
+    const span = 7 * W;
+    const last = Math.ceil((maxX - origin) / span) + 1;
+    for (let oct = Math.floor((minX - origin) / span) - 1; oct <= last; oct++) {
+      for (let s = 0; s < BLACK_SLOT_POS.length; s++) {
+        const x = origin + (oct * 7 + BLACK_SLOT_POS[s]) * W;
+        if (x >= minX && x <= maxX) xs.push(x);
+      }
+    }
+    return xs;
+  }
+
+  function whiteShiftForBlacks(W, upper, blackCenters, fine) {
+    const steps = fine ? Math.max(16, Math.round(W)) : 10;
+    let bestS = 0;
+    let bestScore = -Infinity;
+    for (let k = 0; k < steps; k++) {
+      const s = (W * k) / steps;
+      let bright = 0;
+      let n = 0;
+      for (let x = s + W * 0.5; x < upper.length; x += W) {
+        bright += sampleProfile(upper, x);
+        n++;
+      }
+      let penalty = 0;
+      for (let i = 0; i < blackCenters.length; i++) {
+        const rel = ((blackCenters[i] - s) % W + W) % W;
+        if (Math.abs(rel - W * 0.5) < W * 0.2) penalty += 50;
+      }
+      const score = (n ? bright / n : 0) - penalty;
+      if (score > bestScore) {
+        bestScore = score;
+        bestS = s;
+      }
+    }
+    if (!fine) return bestS;
+    const rad = Math.max(1, W / steps);
+    for (let s = bestS - rad; s <= bestS + rad; s += 1) {
+      const shift = ((s % W) + W) % W;
+      let bright = 0;
+      let n = 0;
+      for (let x = shift + W * 0.5; x < upper.length; x += W) {
+        bright += sampleProfile(upper, x);
+        n++;
+      }
+      let penalty = 0;
+      for (let i = 0; i < blackCenters.length; i++) {
+        const rel = ((blackCenters[i] - shift) % W + W) % W;
+        if (Math.abs(rel - W * 0.5) < W * 0.2) penalty += 50;
+      }
+      const score = (n ? bright / n : 0) - penalty;
+      if (score > bestScore) {
+        bestScore = score;
+        bestS = shift;
+      }
+    }
+    return bestS;
+  }
+
+  function buildWhiteSegs(shift, W, imgW) {
+    const segs = [];
+    const i0 = Math.floor(-shift / W) - 1;
+    const i1 = Math.ceil((imgW - shift) / W) + 1;
+    for (let i = i0; i <= i1; i++) {
+      const a = shift + i * W;
+      const b = a + W;
+      const c0 = Math.max(0, a);
+      const c1 = Math.min(imgW, b);
+      if (c1 - c0 >= W * 0.45) segs.push([c0, c1]);
+    }
+    return segs;
+  }
+
+  function buildBlackSegs(centers, bw, imgW) {
+    const segs = [];
+    for (let i = 0; i < centers.length; i++) {
+      const x = centers[i];
+      if (x < -bw * 0.2 || x > imgW + bw * 0.2) continue;
+      const c0 = Math.max(0, x - bw / 2);
+      const c1 = Math.min(imgW, x + bw / 2);
+      if (c1 - c0 >= bw * 0.4) segs.push([c0, c1]);
+    }
+    return segs;
+  }
+
+  function narrowBlackWidth(runs) {
+    const widths = runs.map(([a, b]) => b - a).sort((a, b) => a - b);
+    if (!widths.length) return 0;
+    const half = widths.slice(0, Math.max(1, Math.ceil(widths.length / 2)));
+    return medianNum(half);
+  }
+
+  /** 黒鍵の幅は白鍵のおよそ半分。これと合わない白鍵幅は採用しない */
+  function blackWidthAgrees(W, bw) {
+    if (!(bw > 0) || !(W > 0)) return true;
+    const ratio = bw / W;
+    return ratio >= 0.34 && ratio <= 0.86;
+  }
+
+  function patternUnitSeeds(centers, hintW) {
+    const seeds = [];
+    const sorted = centers.slice().sort((a, b) => a - b);
+    if (sorted.length >= 2) {
+      let minGap = Infinity;
+      for (let i = 1; i < sorted.length; i++) {
+        minGap = Math.min(minGap, sorted[i] - sorted[i - 1]);
+      }
+      for (const div of [1, 2, 3, 4]) {
+        const w = minGap / div;
+        if (w >= 4) seeds.push(w);
+      }
+    }
+    if (hintW >= 4) seeds.push(hintW);
+    const span = sorted.length >= 2 ? sorted[sorted.length - 1] - sorted[0] : 0;
+    const limit = Math.max(span * 1.25, hintW || 0);
+    const out = [];
+    for (const s of seeds) {
+      if (s >= 4 && limit > 0 && s <= limit) {
+        if (!out.some((u) => Math.abs(u - s) < s * 0.08)) out.push(s);
+      }
+    }
+    return out;
+  }
+
+  function scoreOrigin(origin, W, upper, observed) {
+    const blacks = predictBlackCenters(origin, W, upper.length).filter(
+      (x) => x >= W * 0.15 && x <= upper.length - W * 0.15,
+    );
+    if (blacks.length < 2) return null;
+    const shift = whiteShiftForBlacks(W, upper, blacks, false);
+    let bright = 0;
+    let nW = 0;
+    for (let x = shift + W * 0.5; x < upper.length; x += W) {
+      if (x < W * 0.15 || x > upper.length - W * 0.15) continue;
+      bright += sampleProfile(upper, x);
+      nW++;
+    }
+    if (nW < 3) return null;
+    let dark = 0;
+    let nDark = 0;
+    let inliers = 0;
+    for (let i = 0; i < observed.length; i++) {
+      let best = Infinity;
+      for (let j = 0; j < blacks.length; j++) {
+        best = Math.min(best, Math.abs(blacks[j] - observed[i]));
+      }
+      if (best <= W * 0.35) {
+        inliers++;
+        dark += sampleProfile(upper, observed[i]);
+        nDark++;
+      }
+    }
+    if (!nDark) return null;
+    const ratio = inliers / observed.length;
+    if (ratio < 0.65) return null;
+    let allDark = 0;
+    for (let j = 0; j < blacks.length; j++) allDark += sampleProfile(upper, blacks[j]);
+    const sepIn = bright / nW - dark / nDark;
+    const sepAll = bright / nW - allDark / blacks.length;
+    const sep = sepIn * 0.45 + sepAll * 0.55;
+    return { sep, score: sep + ratio * 80, inliers, shift, blacks };
+  }
+
+  /**
+   * 検出できた黒鍵の間隔を、2個・3個の繰り返しに合わせる。
+   * 揃ったときは見えていない黒鍵も含めて、白鍵幅の格子上に全部置き直す。
+   * @returns {{ whites: number[][], blacks: number[][] } | null}
+   */
+  function fitKeyboardPattern(observedRuns, upper, hintW) {
+    const observed = observedRuns
+      .map(([a, b]) => (a + b) / 2)
+      .sort((a, b) => a - b);
+    if (observed.length < 2) return null;
+    const seeds = patternUnitSeeds(observed, hintW || 0);
+    if (!seeds.length) return null;
+    const bwObs = narrowBlackWidth(observedRuns);
+    const imgW = upper.length;
+    let best = null;
+    const scales = [0.9, 0.95, 1, 1.05, 1.1];
+    const idealW = bwObs > 0 ? bwObs / 0.58 : 0;
+    const prefer = (scored, W) => {
+      if (!blackWidthAgrees(W, bwObs)) return false;
+      if (!best) return true;
+      const r1 = scored.inliers / observed.length;
+      const r0 = best.inliers / observed.length;
+      if (r1 > r0 + 0.05) return true;
+      if (r0 > r1 + 0.05) return false;
+      if (idealW > 0) {
+        const d1 = Math.abs(W - idealW);
+        const d0 = Math.abs(best.W - idealW);
+        if (d1 + 1 < d0) return true;
+        if (d0 + 1 < d1) return false;
+      }
+      return scored.sep > best.sep;
+    };
+    for (let si = 0; si < seeds.length; si++) {
+      for (let sc = 0; sc < scales.length; sc++) {
+        const W = seeds[si] * scales[sc];
+        if (W < 4 || imgW / W > 80 || W > imgW * 0.8) continue;
+        if (!blackWidthAgrees(W, bwObs)) continue;
+        const step = Math.max(1, W / 12);
+        for (let origin = 0; origin < 7 * W; origin += step) {
+          const scored = scoreOrigin(origin, W, upper, observed);
+          if (!scored) continue;
+          if (prefer(scored, W)) best = { ...scored, W, origin };
+        }
+      }
+    }
+    if (!best || best.sep < 8 || best.inliers < Math.min(2, observed.length)) return null;
+
+    let origin = best.origin;
+    let W = best.W;
+    for (const dW of [-0.04, -0.02, 0, 0.02, 0.04]) {
+      const Wt = W * (1 + dW);
+      const oStep = Math.max(1, Wt / 24);
+      for (let dO = -Wt * 0.12; dO <= Wt * 0.12; dO += oStep) {
+        const scored = scoreOrigin(origin + dO, Wt, upper, observed);
+        if (scored && prefer(scored, Wt)) {
+          best = { ...scored, W: Wt, origin: origin + dO };
+        }
+      }
+    }
+    origin = best.origin;
+    W = best.W;
+
+    const predicted = predictBlackCenters(origin, W, imgW);
+    const deltas = [];
+    for (let i = 0; i < observed.length; i++) {
+      let bestD = Infinity;
+      for (let j = 0; j < predicted.length; j++) {
+        const d = observed[i] - predicted[j];
+        if (Math.abs(d) < Math.abs(bestD)) bestD = d;
+      }
+      if (Math.abs(bestD) <= W * 0.4) deltas.push(bestD);
+    }
+    if (deltas.length) origin += medianNum(deltas);
+
+    const blacks = predictBlackCenters(origin, W, imgW).filter(
+      (x) => x > -W * 0.15 && x < imgW + W * 0.15,
+    );
+    const shift = whiteShiftForBlacks(W, upper, blacks, true);
+    let bw = narrowBlackWidth(observedRuns);
+    if (!(bw >= W * 0.28 && bw <= W * 0.9)) bw = W * 0.58;
+    const whites = buildWhiteSegs(shift, W, imgW);
+    const blackSegs = buildBlackSegs(blacks, bw, imgW);
+    if (whites.length < 3 || blackSegs.length < 2) return null;
+    return { whites, blacks: blackSegs };
+  }
+
+  /** 同じ高さの半音列は、色が欠けていても 12 音の白黒パターンで種類を揃える */
+  function forceChromaticKinds(runs, profile) {
+    let bestPc = 0;
+    let bestSep = -Infinity;
+    for (let pc0 = 0; pc0 < 12; pc0++) {
+      let sb = 0;
+      let nb = 0;
+      let sw = 0;
+      let nw = 0;
+      for (let i = 0; i < runs.length; i++) {
+        const lum = segMeanProfile(profile, runs[i].a, runs[i].b);
+        if (isBlackPitch(pc0 + i)) {
+          sb += lum;
+          nb++;
+        } else {
+          sw += lum;
+          nw++;
+        }
+      }
+      if (!nb || !nw) continue;
+      const sep = sw / nw - sb / nb;
+      if (sep > bestSep) {
+        bestSep = sep;
+        bestPc = pc0;
+      }
+    }
+    if (bestSep < 8) return runs;
+    return runs.map((r, i) => ({
+      a: r.a,
+      b: r.b,
+      kind: isBlackPitch(bestPc + i) ? "black" : "white",
+    }));
+  }
+
+  /**
+   * 矩形内の映像から白鍵（全高）と黒鍵（上側）を返す。
+   * 黒鍵が一部しか取れなくても、2個・3個の繰り返しに合うときは格子上に補完する。
+   * @returns {{ keys: {nx:number,ny:number,nw:number,nh:number,kind:'white'|'black'}[], error: string }}
+   */
+  function detectPianoKeysFromImage(img, rect) {
+    if (!img || img.width < 24 || img.height < 16) {
+      return { keys: [], error: PIANO_DETECT_FAIL };
+    }
+    const { w, h, luma } = lumaFromImage(img);
+    const lower = columnMean(luma, w, h, h * 0.80, h * 0.96);
+    const upper = smoothArray(
+      columnMean(luma, w, h, h * 0.08, h * 0.40),
+      Math.max(1, Math.round(w / 400)),
+    );
+    const full = smoothArray(
+      columnMean(luma, w, h, h * 0.06, h * 0.94),
+      Math.max(1, Math.round(w / 400)),
+    );
+    const delta = new Float32Array(w);
+    for (let x = 0; x < w; x++) delta[x] = lower[x] - upper[x];
+    const deltaS = smoothArray(delta, Math.max(1, Math.round(w / 400)));
+    const blackFound = findBlackRuns(deltaS);
+
+    if (!blackFound.realistic) {
+      const flat = segmentFlatKeys(full);
+      if (!flat) return { keys: [], error: PIANO_DETECT_FAIL };
+      const patterned = forceChromaticKinds(flat, full);
+      const keys = patterned.map((r) => mapPixelSeg([r.a, r.b], rect, w, h, r.kind, 0, h));
+      return keys.length >= 3 ? { keys, error: "" } : { keys: [], error: PIANO_DETECT_FAIL };
+    }
+
+    const gapWhites = findWhiteByGaps(lower);
+    const roughW = gapWhites && gapWhites.length
+      ? medianNum(gapWhites.map((s) => s[1] - s[0]))
+      : estimateWhiteWidth(blackFound.runs, w);
+    let blackRuns = filterBlackRuns(blackFound.runs, roughW);
+    if (blackRuns.length < 2) blackRuns = filterBlackRuns(blackFound.runs, null);
+    const fitted = fitKeyboardPattern(blackRuns, upper, roughW);
+    let whites;
+    if (fitted) {
+      whites = fitted.whites;
+      blackRuns = fitted.blacks;
+    } else {
+      const gridWhites = whitesFromBlackGrid(blackRuns, upper, w);
+      whites = chooseWhiteSegments(gapWhites, gridWhites);
+      if (!whites || whites.length < 3) return { keys: [], error: PIANO_DETECT_FAIL };
+      const whiteW = medianNum(whites.map((s) => s[1] - s[0]));
+      blackRuns = filterBlackRuns(blackRuns, whiteW);
+    }
+    const ratios = blackRuns.map(([a, b]) => blackHeightRatio(luma, w, h, a, b));
+    const bh = ratios.length ? medianNum(ratios) : 0.62;
+    const keys = [];
+    for (const seg of whites) keys.push(mapPixelSeg(seg, rect, w, h, "white", 0, h));
+    for (const seg of blackRuns) {
+      keys.push(mapPixelSeg(seg, rect, w, h, "black", 0, h * bh));
+    }
+    if (keys.length < 3) return { keys: [], error: PIANO_DETECT_FAIL };
+    return { keys, error: "" };
+  }
+
+  function readRangeImage(rect) {
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    if (!vw || !vh || !video.srcObject) return null;
+    let sx = Math.max(0, Math.floor(rect.nx * vw));
+    let sy = Math.max(0, Math.floor(rect.ny * vh));
+    let sw = Math.max(1, Math.round(rect.nw * vw));
+    let sh = Math.max(1, Math.round(rect.nh * vh));
+    if (sx >= vw || sy >= vh) return null;
+    if (sx + sw > vw) sw = vw - sx;
+    if (sy + sh > vh) sh = vh - sy;
+    const maxPixels = 1920 * 1080;
+    let dw = sw;
+    let dh = sh;
+    if (dw * dh > maxPixels) {
+      const sc = Math.sqrt(maxPixels / (dw * dh));
+      dw = Math.max(8, Math.round(dw * sc));
+      dh = Math.max(8, Math.round(dh * sc));
+    }
+    sampleCv.width = dw;
+    sampleCv.height = dh;
+    sctx.imageSmoothingEnabled = false;
+    sctx.drawImage(video, sx, sy, sw, sh, 0, 0, dw, dh);
+    return sctx.getImageData(0, 0, dw, dh);
+  }
+
+  function recognizeKeysInRect(rect) {
+    if (!video.srcObject || !video.videoWidth) {
       alert("先に画面を共有してください。");
       return;
     }
-    const n = Math.max(1, Math.min(120, Number(numCols.value) || 1));
-    const startSemi = Math.max(
-      0,
-      Math.min(11, Math.floor(Number(selStripeStart.value))),
-    );
+    const img = readRangeImage(rect);
+    if (!img) {
+      lblRangeResult.textContent = "映像を読み取れませんでした。";
+      alert("映像を読み取れませんでした。画面共有を確認してください。");
+      renderOverlay();
+      return;
+    }
+    const found = detectPianoKeysFromImage(img, rect);
+    if (!found.keys.length) {
+      lblRangeResult.textContent = found.error;
+      alert(found.error);
+      renderOverlay();
+      return;
+    }
+    abortMidiRecording();
+    midiC4KeyId = null;
     keys = [];
     nextId = 1;
-    midiC4KeyId = null;
-    const bandH = 0.08;
-    const nh = bandH;
-    const ny = 1 - nh;
-    const nw = 1 / n;
-    for (let i = 0; i < n; i++) {
-      const pc = (startSemi + i) % 12;
-      const kind = isBlackPitchClass(pc) ? "black" : "white";
-      pushKeyNormalized(i * nw, ny, nw, nh, kind);
-    }
+    const whites = found.keys.filter((k) => k.kind === "white");
+    const blacks = found.keys.filter((k) => k.kind === "black");
+    for (const k of whites) pushKeyNormalized(k.nx, k.ny, k.nw, k.nh, "white");
+    for (const k of blacks) pushKeyNormalized(k.nx, k.ny, k.nw, k.nh, "black");
     syncKeyMidiNotesFromMap();
     nextId = keys.length ? Math.max(...keys.map((x) => x.id)) + 1 : 1;
+    rangeDrawMode = false;
+    rangeDraft = null;
+    btnRangeDraw.textContent = "鍵盤範囲を指定: オフ";
+    lblRangeResult.textContent = `認識: 白鍵 ${whites.length}、黒鍵 ${blacks.length}`;
     rebuildTable(Number(rngTh.value) || 28);
     syncOverlayCursorStyle();
     resizeOverlay();
@@ -1573,6 +2424,19 @@
   }
 
   overlay.addEventListener("pointerdown", (e) => {
+    if (rangeDrawMode) {
+      const p = clientToNormalizedClamped(e.clientX, e.clientY);
+      if (!p) return;
+      dragKind = "range";
+      dragRef.nx0 = p.nx;
+      dragRef.ny0 = p.ny;
+      rangeDraft = { nx: p.nx, ny: p.ny, nw: 0, nh: 0 };
+      overlay.setPointerCapture(e.pointerId);
+      syncOverlayCursorStyle();
+      renderOverlay();
+      return;
+    }
+
     const { lx, ly } = pointerOnStage(e.clientX, e.clientY);
     const hit = hitTest(lx, ly);
 
@@ -1628,6 +2492,14 @@
   });
 
   overlay.addEventListener("pointermove", (e) => {
+    if (dragKind === "range") {
+      const p = clientToNormalizedClamped(e.clientX, e.clientY);
+      if (p) {
+        rangeDraft = rectFromPoints(dragRef.nx0, dragRef.ny0, p.nx, p.ny);
+        renderOverlay();
+      }
+      return;
+    }
     const Lnm = stageToNormalized(e.clientX, e.clientY);
     if (dragKind === "moveGroup" && dragRef.snapForGroup) {
       const Lmv = videoLayout();
@@ -1685,6 +2557,18 @@
   });
 
   overlay.addEventListener("pointerup", (e) => {
+    if (dragKind === "range") {
+      const draft = rangeDraft;
+      dragKind = null;
+      rangeDraft = null;
+      ignoreNextDblClick = !!(draft && (draft.nw >= 0.004 || draft.nh >= 0.004));
+      if (overlay.hasPointerCapture(e.pointerId)) overlay.releasePointerCapture(e.pointerId);
+      syncOverlayCursorStyle();
+      if (draft && draft.nw >= 0.012 && draft.nh >= 0.012) recognizeKeysInRect(draft);
+      else renderOverlay();
+      return;
+    }
+
     overlay.releasePointerCapture(e.pointerId);
 
     dragKind = null;
@@ -1696,6 +2580,10 @@
   });
 
   overlay.addEventListener("dblclick", (e) => {
+    if (rangeDrawMode || ignoreNextDblClick) {
+      ignoreNextDblClick = false;
+      return;
+    }
     const { lx, ly } = pointerOnStage(e.clientX, e.clientY);
     const hit = hitTest(lx, ly);
     if (hit && (hit.type === "move" || hit.type === "resize")) {
@@ -1731,7 +2619,20 @@
     syncPickC4Button();
   });
 
-  btnStripe.addEventListener("click", stripeKeys);
+  btnRangeDraw.addEventListener("click", () => {
+    if (!rangeDrawMode) {
+      if (!video.srcObject || !video.videoWidth) {
+        alert("先に画面を共有してください。");
+        return;
+      }
+      if (pickC4Mode) setPickC4Mode(false);
+    }
+    rangeDrawMode = !rangeDrawMode;
+    rangeDraft = null;
+    btnRangeDraw.textContent = rangeDrawMode ? "鍵盤範囲を指定: オン" : "鍵盤範囲を指定: オフ";
+    syncOverlayCursorStyle();
+    renderOverlay();
+  });
 
   btnMidiRecStart.addEventListener("click", startMidiRecording);
   btnMidiRecStop.addEventListener("click", stopMidiRecordingAndExport);
@@ -1764,7 +2665,6 @@
           0,
           Math.min(11, Math.floor(Number(selStripeStart.value))),
         ),
-        numCols: Math.max(1, Math.min(120, Number(numCols.value) || 14)),
       },
     };
     if (midiC4KeyId != null) data.midiC4KeyId = midiC4KeyId;
@@ -1809,9 +2709,6 @@
         const sf = data.stripeForm;
         if (typeof sf.startSemi === "number" && Number.isFinite(sf.startSemi)) {
           selStripeStart.value = String(Math.max(0, Math.min(11, Math.floor(sf.startSemi))));
-        }
-        if (typeof sf.numCols === "number" && Number.isFinite(sf.numCols)) {
-          numCols.value = String(Math.max(1, Math.min(120, Math.floor(sf.numCols))));
         }
       }
 
